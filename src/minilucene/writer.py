@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
 
 from minilucene.errors import WriterAlreadyOpenError
 from minilucene.index.memory import RamIndexBuilder
+from minilucene.merge import merge_segment_images
 from minilucene.reader import IndexReader
 from minilucene.storage.image import SegmentImage
 from minilucene.storage.live_docs import LiveDocsStore
@@ -264,6 +265,76 @@ class IndexWriter:
         self._buffer = next_buffer
         self._buffer_live_docs = next_buffer_live_docs
         return deleted
+
+    def merge(
+        self, segment_generations: tuple[int, ...] | list[int]
+    ) -> SegmentDescriptor:
+        self._ensure_open()
+        selected = tuple(segment_generations)
+        if len(selected) < 2:
+            raise ValueError("merge requires at least two segments")
+        if len(set(selected)) != len(selected):
+            raise ValueError("merge segment generations must be unique")
+        current_set = set(self._segment_generations)
+        if any(generation not in current_set for generation in selected):
+            raise ValueError("merge references unknown segment")
+
+        selected_set = set(selected)
+        ordered_selected = tuple(
+            generation
+            for generation in self._segment_generations
+            if generation in selected_set
+        )
+        captured = tuple(
+            (
+                self._segment_store.open(
+                    generation, self.index.schema.fingerprint
+                ),
+                self._live_docs[generation],
+            )
+            for generation in ordered_selected
+        )
+
+        generation = self._next_segment_generation
+        while self._segment_store.generation_exists(generation):
+            generation += 1
+        image = merge_segment_images(
+            generation=generation,
+            schema_fingerprint=self.index.schema.fingerprint,
+            segments=captured,
+        )
+        descriptor = self._segment_store.publish(image)
+
+        insertion_index = min(
+            self._segment_generations.index(item)
+            for item in ordered_selected
+        )
+        next_generations: list[int] = []
+        for index, current in enumerate(self._segment_generations):
+            if index == insertion_index:
+                next_generations.append(generation)
+            if current not in selected_set:
+                next_generations.append(current)
+
+        next_live_docs = {
+            item: mask
+            for item, mask in self._live_docs.items()
+            if item not in selected_set
+        }
+        next_live_docs[generation] = frozenset(range(image.max_doc))
+        next_metadata = {
+            item: metadata
+            for item, metadata in self._live_docs_metadata.items()
+            if item not in selected_set
+        }
+        next_metadata[generation] = None
+
+        self._segment_generations = next_generations
+        self._live_docs = next_live_docs
+        self._live_docs_metadata = next_metadata
+        self._dirty_live_docs.difference_update(selected_set)
+        self._next_segment_generation = generation + 1
+        return descriptor
 
     def commit(self) -> Manifest:
         self._ensure_open()
