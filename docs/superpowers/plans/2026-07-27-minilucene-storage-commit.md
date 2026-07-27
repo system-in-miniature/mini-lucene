@@ -17,7 +17,7 @@
 - Create: `src/minilucene/storage/image.py`
 - Create: `tests/unit/storage/test_segment_image.py`
 
-- [ ] **Step 1: Write the failing invariant tests**
+- [x] **Step 1: Write the failing invariant tests**
 
 ```python
 import pytest
@@ -42,7 +42,7 @@ def test_segment_image_is_immutable(ram_segment):
         image.stored_documents[0] = {"id": "changed"}
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/unit/storage/test_segment_image.py -q
@@ -50,7 +50,7 @@ uv run pytest tests/unit/storage/test_segment_image.py -q
 
 Expected: import failure because `storage.image` does not exist.
 
-- [ ] **Step 3: Implement the frozen image**
+- [x] **Step 3: Implement the frozen image**
 
 Use immutable tuples and `MappingProxyType`. Validate generation is positive,
 document IDs are exactly `range(max_doc)`, posting doc IDs are increasing and
@@ -77,13 +77,13 @@ class SegmentImage:
     ) -> "SegmentImage": ...
 ```
 
-- [ ] **Step 4: Run GREEN and regression**
+- [x] **Step 4: Run GREEN and regression**
 
 ```bash
 uv run pytest tests/unit/storage/test_segment_image.py tests/unit/index -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/storage tests/unit/storage/test_segment_image.py
@@ -96,7 +96,7 @@ git commit -m "feat: freeze immutable segment images"
 - Create: `src/minilucene/storage/varint.py`
 - Create: `tests/unit/storage/test_varint.py`
 
-- [ ] **Step 1: Write table and malformed-input tests**
+- [x] **Step 1: Write table and malformed-input tests**
 
 ```python
 import pytest
@@ -125,25 +125,25 @@ def test_unterminated_varint_is_rejected():
         decode_uvarint(b"\x80", 0)
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/unit/storage/test_varint.py -q
 ```
 
-- [ ] **Step 3: Implement bounded decoding**
+- [x] **Step 3: Implement bounded decoding**
 
 `decode_uvarint` accepts at most ten bytes and rejects overflow, negative
 offsets, out-of-bounds offsets, and unterminated input. Delta decoding accepts
 an explicit element count and rejects zero deltas after the first element.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/unit/storage/test_varint.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/storage/varint.py tests/unit/storage/test_varint.py
@@ -157,7 +157,7 @@ git commit -m "feat: add bounded varint codecs"
 - Create: `tests/unit/storage/test_segment_codec.py`
 - Create: `docs/segment-format.md`
 
-- [ ] **Step 1: Write byte-stability and round-trip tests**
+- [x] **Step 1: Write byte-stability and round-trip tests**
 
 ```python
 from minilucene.storage.codec import SegmentDataCodec
@@ -189,13 +189,13 @@ Add corruption cases for invalid UTF-8, offsets outside `postings.bin`,
 non-monotonic doc IDs, non-monotonic positions, malformed JSON frames, trailing
 bytes, and field-length count mismatches.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/unit/storage/test_segment_codec.py -q
 ```
 
-- [ ] **Step 3: Implement the documented codec**
+- [x] **Step 3: Implement the documented codec**
 
 Encoding contracts:
 
@@ -221,19 +221,19 @@ Every integer and byte-string length uses unsigned varints. Terms sort by
 `(field UTF-8 bytes, term UTF-8 bytes)`. JSON uses
 `sort_keys=True, ensure_ascii=False, separators=(",", ":")`.
 
-- [ ] **Step 4: Document the exact format**
+- [x] **Step 4: Document the exact format**
 
 `docs/segment-format.md` records magic/version ownership, every frame, sorting
 rules, validation rules, and that compatibility with Apache Lucene is absent.
 
-- [ ] **Step 5: Run GREEN and deterministic check**
+- [x] **Step 5: Run GREEN and deterministic check**
 
 ```bash
 uv run pytest tests/unit/storage/test_segment_codec.py -q
 uv run ruff check src/minilucene/storage tests/unit/storage
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/minilucene/storage/codec.py tests/unit/storage/test_segment_codec.py docs/segment-format.md
@@ -247,7 +247,7 @@ git commit -m "feat: encode educational segment data"
 - Create: `src/minilucene/storage/segment_store.py`
 - Create: `tests/storage/test_segment_store.py`
 
-- [ ] **Step 1: Write publication and cleanup tests**
+- [x] **Step 1: Write publication and cleanup tests**
 
 ```python
 from pathlib import Path
@@ -274,13 +274,13 @@ def test_failed_publish_never_creates_final_directory(
     assert not (tmp_path / "segments" / "seg_000001").exists()
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/storage/test_segment_store.py -q
 ```
 
-- [ ] **Step 3: Implement injected filesystem operations**
+- [x] **Step 3: Implement injected filesystem operations**
 
 `FileSystemOps` wraps mkdir, write, fsync-file, fsync-directory, replace, read,
 remove-tree, and list-directory. `SegmentStore.publish` uses a UUID temp
@@ -288,20 +288,20 @@ directory, writes four data files, fsyncs them, writes `segment.json` last with
 magic/version/generation/schema fingerprint/length/SHA-256 entries, fsyncs,
 renames atomically, and fsyncs `segments/`.
 
-- [ ] **Step 4: Implement strict open**
+- [x] **Step 4: Implement strict open**
 
 `SegmentStore.open(generation, expected_schema_fingerprint)` validates metadata
 before decoding. Unknown version, wrong schema, missing file, wrong length,
 wrong checksum, or invalid codec data raises `CorruptIndexError` without
 returning a partial image.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 ```bash
 uv run pytest tests/storage/test_segment_store.py -q
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/minilucene/storage/filesystem.py src/minilucene/storage/segment_store.py tests/storage/test_segment_store.py
@@ -314,7 +314,7 @@ git commit -m "feat: publish checksummed immutable segments"
 - Create: `src/minilucene/storage/manifest.py`
 - Create: `tests/storage/test_manifest_store.py`
 
-- [ ] **Step 1: Write atomic-root tests**
+- [x] **Step 1: Write atomic-root tests**
 
 ```python
 import pytest
@@ -339,13 +339,13 @@ def test_replace_failure_preserves_old_manifest(tmp_path, failing_fs):
     assert store.read() == old
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/storage/test_manifest_store.py -q
 ```
 
-- [ ] **Step 3: Implement immutable manifest values**
+- [x] **Step 3: Implement immutable manifest values**
 
 Manifest fields:
 
@@ -372,13 +372,13 @@ canonical JSON to `manifest.tmp`, fsyncs, replaces `manifest.json`, and fsyncs
 the index directory. Startup removes neither orphans nor temp files; it ignores
 anything not referenced by the manifest.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/storage/test_manifest_store.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/storage/manifest.py tests/storage/test_manifest_store.py
@@ -394,7 +394,7 @@ git commit -m "feat: make manifest the committed index root"
 - Modify: `src/minilucene/__init__.py`
 - Create: `tests/contract/test_index_lifecycle.py`
 
-- [ ] **Step 1: Write public lifecycle tests**
+- [x] **Step 1: Write public lifecycle tests**
 
 ```python
 import pytest
@@ -424,26 +424,26 @@ def test_only_one_writer_can_be_open(tmp_path, schema):
     index.writer().close()
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/contract/test_index_lifecycle.py -q
 ```
 
-- [ ] **Step 3: Implement lifecycle ownership**
+- [x] **Step 3: Implement lifecycle ownership**
 
 `Index.create` refuses non-empty initialized paths, persists schema, and writes
 manifest zero. `Index.open` validates schema fingerprint. `Index.writer`
 creates an exclusive `.writer.lock` with `O_CREAT | O_EXCL`; `close()` releases
 it idempotently. Stale-lock recovery is explicit and outside V1.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/contract/test_index_lifecycle.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/index.py src/minilucene/writer.py src/minilucene/errors.py src/minilucene/__init__.py tests/contract/test_index_lifecycle.py
@@ -456,7 +456,7 @@ git commit -m "feat: own index and writer lifecycle"
 - Modify: `src/minilucene/writer.py`
 - Create: `tests/storage/test_writer_flush.py`
 
-- [ ] **Step 1: Write visibility and threshold tests**
+- [x] **Step 1: Write visibility and threshold tests**
 
 ```python
 def test_flush_creates_segment_but_does_not_change_manifest(index):
@@ -475,13 +475,13 @@ def test_document_threshold_flushes_before_next_add(index_with_threshold_one):
         assert writer.buffered_document_count == 1
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/storage/test_writer_flush.py -q
 ```
 
-- [ ] **Step 3: Implement flush**
+- [x] **Step 3: Implement flush**
 
 Before each add, validate and analyze the complete document into a temporary
 prepared document. Mutate the RAM buffer only after preparation succeeds.
@@ -492,13 +492,13 @@ buffer only after publication succeeds. Empty flush returns `None`.
 Automatic flush uses `FlushPolicy(max_documents, max_postings)` and checks the
 logical counts before admitting the next document.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/storage/test_writer_flush.py tests/contract/test_memory_search.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/writer.py tests/storage/test_writer_flush.py
@@ -514,7 +514,7 @@ git commit -m "feat: flush writer buffers to immutable segments"
 - Create: `tests/storage/test_commit_recovery.py`
 - Create: `tests/contract/test_disk_search.py`
 
-- [ ] **Step 1: Write old-or-new crash tests**
+- [x] **Step 1: Write old-or-new crash tests**
 
 Inject failures at: segment data write, segment metadata write, segment rename,
 manifest temp write, and manifest replace. For each failure reopen the index
@@ -529,33 +529,33 @@ def test_complete_segment_without_manifest_is_ignored_after_reopen(index):
     assert reopened.open_reader().max_doc == 0
 ```
 
-- [ ] **Step 2: Write equivalence contract**
+- [x] **Step 2: Write equivalence contract**
 
 Build the same corpus in `MemoryIndex` and disk `Index`, commit, reopen, search
 term/phrase/prefix/boolean queries, and compare total hits, stored fields,
 scores with `pytest.approx`, and final order.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```bash
 uv run pytest tests/storage/test_commit_recovery.py tests/contract/test_disk_search.py -q
 ```
 
-- [ ] **Step 4: Implement commit**
+- [x] **Step 4: Implement commit**
 
 Commit flushes, verifies all referenced segments, creates the next immutable
 manifest, publishes it atomically, then updates writer committed state. A
 failed manifest publication leaves the prior committed manifest authoritative
 and keeps the writer open for explicit retry or close.
 
-- [ ] **Step 5: Implement committed reader**
+- [x] **Step 5: Implement committed reader**
 
 `Index.open_reader()` loads exactly the manifest's segments, constructs one
 multi-segment reader view, computes global corpus statistics, and searches
 through the Phase 1 scorer/collector path. It never scans unreferenced
 directories.
 
-- [ ] **Step 6: Run GREEN and phase verification**
+- [x] **Step 6: Run GREEN and phase verification**
 
 ```bash
 uv run pytest tests/storage/test_commit_recovery.py tests/contract/test_disk_search.py -q
@@ -565,7 +565,7 @@ uv run python -m compileall -q src tests tools
 git diff --check
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/minilucene/writer.py src/minilucene/index.py src/minilucene/reader.py tests/storage/test_commit_recovery.py tests/contract/test_disk_search.py
@@ -578,13 +578,13 @@ git commit -m "feat: atomically commit and reopen indexes"
 - Create: `tests/acceptance/test_phase2_storage_commit.py`
 - Create: `docs/phase2-storage-commit.md`
 
-- [ ] **Step 1: Add one restart acceptance**
+- [x] **Step 1: Add one restart acceptance**
 
 Create two segments, commit, reopen through a fresh `Index`, and prove stored
 fields, phrase hits, BM25 scores, schema fingerprint, generation ordering, and
 absence of orphan visibility match the in-memory oracle.
 
-- [ ] **Step 2: Run phase acceptance**
+- [x] **Step 2: Run phase acceptance**
 
 ```bash
 uv sync --dev
@@ -595,13 +595,13 @@ uv run python -m compileall -q src tests tools
 git diff --check
 ```
 
-- [ ] **Step 3: Write the phase report**
+- [x] **Step 3: Write the phase report**
 
 `docs/phase2-storage-commit.md` records the segment format, manifest authority,
 flush/commit distinction, crash matrix, verification commands, and the absence
 of refresh, deletion, merge, query parsing, network, and vector behavior.
 
-- [ ] **Step 4: Commit acceptance**
+- [x] **Step 4: Commit acceptance**
 
 ```bash
 git add tests/acceptance/test_phase2_storage_commit.py docs/phase2-storage-commit.md

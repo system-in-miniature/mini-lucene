@@ -18,7 +18,7 @@
 - Create: `src/minilucene/query_parser/errors.py`
 - Create: `tests/unit/query_parser/test_lexer.py`
 
-- [ ] **Step 1: Write lexical tests**
+- [x] **Step 1: Write lexical tests**
 
 ```python
 import pytest
@@ -50,26 +50,26 @@ def test_unclosed_phrase_reports_opening_offset():
 Cover parentheses, unary `-`, case-insensitive operators, escaped quote and
 backslash inside phrases, one trailing `*`, and illegal wildcard placement.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/unit/query_parser/test_lexer.py -q
 ```
 
-- [ ] **Step 3: Implement deterministic lexer**
+- [x] **Step 3: Implement deterministic lexer**
 
 `QuerySyntaxError(message, offset, source)` renders the offset plus a caret.
 Whitespace separates expressions. `AND`, `OR`, and `NOT` are operators only
 when a complete unquoted word. Asterisk is legal only as the final character
 of a non-empty word.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/unit/query_parser/test_lexer.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/query_parser tests/unit/query_parser/test_lexer.py
@@ -82,7 +82,7 @@ git commit -m "feat: tokenize closed query syntax"
 - Create: `src/minilucene/query_parser/parser.py`
 - Create: `tests/unit/query_parser/test_parser.py`
 
-- [ ] **Step 1: Write AST equality tests**
+- [x] **Step 1: Write AST equality tests**
 
 ```python
 from minilucene.query import (
@@ -128,13 +128,13 @@ def test_fielded_prefix(schema):
 Cover parentheses, unary NOT/minus, implicit OR, unknown/non-indexed fields,
 empty analyzer output, only-negative query semantics, and syntax offsets.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/unit/query_parser/test_parser.py -q
 ```
 
-- [ ] **Step 3: Implement recursive descent**
+- [x] **Step 3: Implement recursive descent**
 
 Functions:
 
@@ -151,13 +151,13 @@ phrase, prefix, or parenthesized expression. Bare expressions use
 phrase positions by subtracting the first surviving position and never
 renumber later stopword gaps.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/unit/query_parser/test_parser.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/query_parser/parser.py src/minilucene/query_parser/__init__.py tests/unit/query_parser/test_parser.py
@@ -171,7 +171,7 @@ git commit -m "feat: parse queries into the closed AST"
 - Modify: `src/minilucene/reader.py`
 - Create: `tests/contract/test_prefix_rewrite.py`
 
-- [ ] **Step 1: Write sorted expansion and overflow tests**
+- [x] **Step 1: Write sorted expansion and overflow tests**
 
 ```python
 import pytest
@@ -195,13 +195,13 @@ def test_prefix_expansion_fails_instead_of_truncating(reader):
     assert error.value.limit == 2
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/contract/test_prefix_rewrite.py -q
 ```
 
-- [ ] **Step 3: Implement rewrite**
+- [x] **Step 3: Implement rewrite**
 
 Build one sorted per-field term union from segment dictionaries. Use binary
 search to find the prefix start, collect until the prefix stops matching, and
@@ -209,13 +209,13 @@ raise on the `(limit + 1)`th term. Rewrite to positive term clauses; zero
 expansions become a match-none internal query. Apply recursively inside boolean
 queries.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/contract/test_prefix_rewrite.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/search/rewrite.py src/minilucene/reader.py tests/contract/test_prefix_rewrite.py
@@ -230,7 +230,7 @@ git commit -m "feat: bound prefix query expansion"
 - Modify: `src/minilucene/search/searcher.py`
 - Create: `tests/contract/test_highlighting.py`
 
-- [ ] **Step 1: Write term, phrase, escape, and eligibility tests**
+- [x] **Step 1: Write term, phrase, escape, and eligibility tests**
 
 ```python
 def test_highlight_uses_original_offsets_and_escapes_text(searcher):
@@ -257,13 +257,13 @@ def test_nonstored_or_keyword_field_cannot_be_highlighted(searcher):
 Add tests for lowercase matching with original case, overlapping term offsets,
 phrase gaps, no match, and literal `<script>` escaping.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/contract/test_highlighting.py -q
 ```
 
-- [ ] **Step 3: Implement re-analysis highlighting**
+- [x] **Step 3: Implement re-analysis highlighting**
 
 Rewrite the query first. Extract positive term and phrase constraints for one
 field. Re-analyze stored text, identify matching token offsets and matched
@@ -272,13 +272,13 @@ plain and matched slice separately, and wrap matched slices with `<em>`.
 Return one complete escaped field value per requested field; no fragment
 scoring is performed.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/contract/test_highlighting.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/highlight.py src/minilucene/search/results.py src/minilucene/search/searcher.py tests/contract/test_highlighting.py
@@ -291,7 +291,7 @@ git commit -m "feat: highlight stored text from analyzer offsets"
 - Create: `src/minilucene/evaluation.py`
 - Create: `tests/evaluation/test_metrics.py`
 
-- [ ] **Step 1: Write hand-computed metric tests**
+- [x] **Step 1: Write hand-computed metric tests**
 
 ```python
 import pytest
@@ -319,25 +319,25 @@ def test_ndcg_uses_graded_relevance():
 Cover `k=0`, empty relevant sets, duplicate ranked IDs rejection, multiple
 queries in MRR, ideal DCG zero, and finite/nonnegative grades.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/evaluation/test_metrics.py -q
 ```
 
-- [ ] **Step 3: Implement pure functions**
+- [x] **Step 3: Implement pure functions**
 
 The module imports no index, writer, reader, scorer, or storage modules.
 Metrics accept sequences/mappings and return floats. Invalid inputs fail
 before arithmetic.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/evaluation/test_metrics.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/evaluation.py tests/evaluation/test_metrics.py
@@ -352,7 +352,7 @@ git commit -m "feat: add deterministic relevance metrics"
 - Create: `tests/fixtures/qrels.json`
 - Create: `tests/evaluation/test_reference_corpus.py`
 
-- [ ] **Step 1: Add deterministic fixture validation**
+- [x] **Step 1: Add deterministic fixture validation**
 
 Fixture schema:
 
@@ -372,7 +372,7 @@ Fixture schema:
 Queries have stable IDs, query text, and default field. Qrels map query ID to
 document ID and integer grade.
 
-- [ ] **Step 2: Add behavior counterexamples**
+- [x] **Step 2: Add behavior counterexamples**
 
 Tests prove:
 
@@ -383,7 +383,7 @@ Tests prove:
 - rankings and approximate scores are equal before and after
   flush/commit/reopen/merge.
 
-- [ ] **Step 3: Run RED or expose failures**
+- [x] **Step 3: Run RED or expose failures**
 
 ```bash
 uv run pytest tests/evaluation/test_reference_corpus.py -q
@@ -391,18 +391,18 @@ uv run pytest tests/evaluation/test_reference_corpus.py -q
 
 Expected: fixture loader or one asserted behavior is absent before implementation.
 
-- [ ] **Step 4: Add a read-only fixture loader and make behaviors pass**
+- [x] **Step 4: Add a read-only fixture loader and make behaviors pass**
 
 Keep fixture loading in `tests/support/reference_corpus.py`; do not add
 production corpus assumptions.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 ```bash
 uv run pytest tests/evaluation/test_reference_corpus.py -q
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/fixtures tests/support/reference_corpus.py tests/evaluation/test_reference_corpus.py
@@ -416,7 +416,7 @@ git commit -m "test: freeze reference relevance corpus"
 - Modify: `pyproject.toml`
 - Create: `tests/contract/test_cli.py`
 
-- [ ] **Step 1: Write subprocess-facing CLI tests**
+- [x] **Step 1: Write subprocess-facing CLI tests**
 
 Commands:
 
@@ -432,25 +432,25 @@ Tests invoke `cli.main(argv)` with captured stdout/stderr. Search emits one
 canonical JSON object containing `total_hits` and ordered hits. Domain failures
 exit `2` with one concise stderr line; unexpected failures are not swallowed.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/contract/test_cli.py -q
 ```
 
-- [ ] **Step 3: Implement adapter-only CLI**
+- [x] **Step 3: Implement adapter-only CLI**
 
 Parse arguments, deserialize JSON, call only public `Index`, writer, parser,
 and searcher APIs, close every owner through context managers, and serialize
 results. Do not access codecs, manifests, internal postings, or registry state.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 uv run pytest tests/contract/test_cli.py -q
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/cli.py pyproject.toml tests/contract/test_cli.py
@@ -464,7 +464,7 @@ git commit -m "feat: add thin local search CLI"
 - Create: `docs/behavior-matrix.md`
 - Create: `tests/contract/test_behavior_matrix.py`
 
-- [ ] **Step 1: Write matrix-link validation**
+- [x] **Step 1: Write matrix-link validation**
 
 The test parses Markdown rows and asserts every row has:
 
@@ -475,13 +475,13 @@ feature | public API | semantic boundary | executable test node ID
 For each node ID, run pytest collection programmatically and assert exactly one
 test is collected. Reject duplicate features and duplicate node IDs.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 uv run pytest tests/contract/test_behavior_matrix.py -q
 ```
 
-- [ ] **Step 3: Write README**
+- [x] **Step 3: Write README**
 
 README includes:
 
@@ -497,20 +497,20 @@ README includes:
 It must not claim Lucene format/API compatibility, production performance,
 distributed behavior, vector retrieval, or course completion.
 
-- [ ] **Step 4: Write behavior matrix**
+- [x] **Step 4: Write behavior matrix**
 
 Map every V1 feature and required failure experiment to a stable test node ID.
 Include negative rows for TCP/HTTP, distribution, vector retrieval, Lucene
 codec compatibility, and automatic merge scheduling, pointing to explicit
 scope tests/document checks rather than implied support.
 
-- [ ] **Step 5: Run GREEN**
+- [x] **Step 5: Run GREEN**
 
 ```bash
 uv run pytest tests/contract/test_behavior_matrix.py -q
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md docs/behavior-matrix.md tests/contract/test_behavior_matrix.py
@@ -524,7 +524,7 @@ git commit -m "docs: map MiniLucene behavior to executable evidence"
 - Create: `tests/acceptance/test_owner_zero.py`
 - Create: `tests/acceptance/test_end_to_end.py`
 
-- [ ] **Step 1: Consolidate failure matrix**
+- [x] **Step 1: Consolidate failure matrix**
 
 Parameterized acceptance covers:
 
@@ -541,14 +541,14 @@ Parameterized acceptance covers:
 Each case asserts public behavior and authoritative on-disk roots, not only an
 internal mock call.
 
-- [ ] **Step 2: Add realistic end-to-end test**
+- [x] **Step 2: Add realistic end-to-end test**
 
 Use the documented public API to create an index, add fielded corpus, commit,
 reopen, parse boolean phrase query, BM25 Top-K, retrieve stored fields,
 highlight, refresh new data, update, delete, commit, retain an old reader,
 merge, reopen, and evaluate result IDs.
 
-- [ ] **Step 3: Add owner-zero test**
+- [x] **Step 3: Add owner-zero test**
 
 After all external readers/writers close:
 
@@ -562,24 +562,24 @@ assert not (index.path / ".writer.lock").exists()
 assert not list(index.path.rglob(".tmp-*"))
 ```
 
-- [ ] **Step 4: Run RED or expose uncovered cases**
+- [x] **Step 4: Run RED or expose uncovered cases**
 
 ```bash
 uv run pytest tests/acceptance/test_failure_matrix.py tests/acceptance/test_owner_zero.py tests/acceptance/test_end_to_end.py -q
 ```
 
-- [ ] **Step 5: Close only the evidenced gaps**
+- [x] **Step 5: Close only the evidenced gaps**
 
 Change production code only for failures demonstrated by these tests. Preserve
 the frozen public and storage contracts.
 
-- [ ] **Step 6: Run GREEN**
+- [x] **Step 6: Run GREEN**
 
 ```bash
 uv run pytest tests/acceptance/test_failure_matrix.py tests/acceptance/test_owner_zero.py tests/acceptance/test_end_to_end.py -q
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src tests/acceptance
@@ -592,7 +592,7 @@ git commit -m "test: accept MiniLucene failure and lifecycle semantics"
 - Create: `docs/final-acceptance.md`
 - Modify: `docs/behavior-matrix.md` only if collected node IDs changed
 
-- [ ] **Step 1: Run every verification gate**
+- [x] **Step 1: Run every verification gate**
 
 ```bash
 uv sync --dev
@@ -607,7 +607,7 @@ git status --short
 The text scan may match explanatory prose only. It must not find unfinished
 production branches, skipped acceptance, or deferred core behavior.
 
-- [ ] **Step 2: Run installed-package smoke test**
+- [x] **Step 2: Run installed-package smoke test**
 
 ```bash
 tmp_dir="$(mktemp -d)"
@@ -620,7 +620,7 @@ uv pip install --python "$tmp_dir/venv/bin/python" dist/*.whl
 
 Expected: wheel installs, import works, CLI help exits `0`.
 
-- [ ] **Step 3: Audit scope**
+- [x] **Step 3: Audit scope**
 
 ```bash
 test ! -d course
@@ -631,7 +631,7 @@ rg -n 'FastAPI|Flask|socket|RESP|Raft|Sentinel|Cluster|HNSW|VectorField' src || 
 Expected: no course directories; the source scan has no implementation of
 network, distributed, or vector behavior.
 
-- [ ] **Step 4: Write final acceptance evidence**
+- [x] **Step 4: Write final acceptance evidence**
 
 `docs/final-acceptance.md` records:
 
@@ -644,7 +644,7 @@ network, distributed, or vector behavior.
 - V1 supported and excluded scope;
 - statement that course design remains a separate future task.
 
-- [ ] **Step 5: Commit and re-run clean-tree checks**
+- [x] **Step 5: Commit and re-run clean-tree checks**
 
 ```bash
 git add docs/final-acceptance.md docs/behavior-matrix.md

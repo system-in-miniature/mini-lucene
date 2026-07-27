@@ -18,7 +18,7 @@
 - Create: `tests/test_public_surface.py`
 - Create: `tools/__init__.py`
 
-- [ ] **Step 1: Write the public import RED test**
+- [x] **Step 1: Write the public import RED test**
 
 ```python
 from minilucene import (
@@ -37,7 +37,7 @@ def test_public_surface_imports():
     assert MemoryIndex(schema).schema == schema
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run:
 
@@ -47,7 +47,7 @@ uv run pytest tests/test_public_surface.py -q
 
 Expected: collection fails because `minilucene` is not importable.
 
-- [ ] **Step 3: Create packaging and the temporary public shell**
+- [x] **Step 3: Create packaging and the temporary public shell**
 
 ```toml
 [build-system]
@@ -80,7 +80,7 @@ modules introduced in Task 2; until Task 2 lands, define the four names in the
 same file with constructors that preserve the test signature. Task 2 removes
 that temporary shell in the same phase, so no phase boundary exposes it.
 
-- [ ] **Step 4: Sync and run the test**
+- [x] **Step 4: Sync and run the test**
 
 ```bash
 uv sync --dev
@@ -89,7 +89,7 @@ uv run pytest tests/test_public_surface.py -q
 
 Expected: `1 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml uv.lock src tests/test_public_surface.py tools
@@ -104,7 +104,7 @@ git commit -m "chore: bootstrap MiniLucene reference package"
 - Modify: `src/minilucene/__init__.py`
 - Create: `tests/contract/test_schema.py`
 
-- [ ] **Step 1: Write schema and document contract tests**
+- [x] **Step 1: Write schema and document contract tests**
 
 ```python
 import pytest
@@ -139,7 +139,7 @@ def test_document_rejects_unknown_fields_and_non_strings():
         freeze_document(schema, {"body": 1})
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run:
 
@@ -149,7 +149,7 @@ uv run pytest tests/contract/test_schema.py -q
 
 Expected: imports fail for `schema` and `document`.
 
-- [ ] **Step 3: Implement immutable schema values**
+- [x] **Step 3: Implement immutable schema values**
 
 ```python
 # src/minilucene/schema.py
@@ -242,7 +242,7 @@ def freeze_document(schema: Schema, values: Mapping[str, object]) -> FrozenDocum
     return MappingProxyType(dict(sorted(frozen.items())))
 ```
 
-- [ ] **Step 4: Export the real public values and run tests**
+- [x] **Step 4: Export the real public values and run tests**
 
 ```python
 # src/minilucene/__init__.py
@@ -259,7 +259,7 @@ uv run pytest tests/contract/test_schema.py -q
 
 Expected: `2 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene tests/contract/test_schema.py
@@ -275,7 +275,7 @@ git commit -m "feat: freeze field and document schema"
 - Create: `src/minilucene/analysis/standard.py`
 - Create: `tests/unit/analysis/test_pipeline.py`
 
-- [ ] **Step 1: Write token, binary keyword, lowercase, and stop-gap tests**
+- [x] **Step 1: Write token, binary keyword, lowercase, and stop-gap tests**
 
 ```python
 from minilucene.analysis import (
@@ -299,7 +299,7 @@ def test_keyword_analyzer_emits_whole_value():
     )
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 Run:
 
@@ -309,7 +309,7 @@ uv run pytest tests/unit/analysis/test_pipeline.py -q
 
 Expected: `minilucene.analysis` does not exist.
 
-- [ ] **Step 3: Implement the closed analysis pipeline**
+- [x] **Step 3: Implement the closed analysis pipeline**
 
 ```python
 # model.py
@@ -370,7 +370,7 @@ positions before filtering. `KeywordTokenizer` emits no token for an empty
 string and otherwise one exact token. Export `StandardAnalyzer`,
 `KeywordAnalyzer`, and `Token` from `analysis/__init__.py`.
 
-- [ ] **Step 4: Run analyzer tests**
+- [x] **Step 4: Run analyzer tests**
 
 ```bash
 uv run pytest tests/unit/analysis/test_pipeline.py -q
@@ -378,7 +378,7 @@ uv run pytest tests/unit/analysis/test_pipeline.py -q
 
 Expected: `2 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/analysis tests/unit/analysis
@@ -393,7 +393,7 @@ git commit -m "feat: add positional analysis pipeline"
 - Create: `src/minilucene/index/memory.py`
 - Create: `tests/contract/test_memory_index.py`
 
-- [ ] **Step 1: Write postings, stored-field, and length tests**
+- [x] **Step 1: Write postings, stored-field, and length tests**
 
 ```python
 from minilucene.index.memory import RamIndexBuilder
@@ -422,7 +422,7 @@ def test_ram_segment_contains_positions_lengths_and_only_stored_values():
     assert segment.stored_documents == ({"id": "d1", "source": "manual"},)
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 uv run pytest tests/contract/test_memory_index.py -q
@@ -430,7 +430,7 @@ uv run pytest tests/contract/test_memory_index.py -q
 
 Expected: import fails for `RamIndexBuilder`.
 
-- [ ] **Step 3: Implement immutable postings and segment values**
+- [x] **Step 3: Implement immutable postings and segment values**
 
 ```python
 # postings.py
@@ -463,7 +463,7 @@ For stored fields it copies only stored values. `freeze()` sorts fields and
 terms, converts every collection to tuples and mapping proxies, and validates
 dense doc IDs plus increasing positions.
 
-- [ ] **Step 4: Run the contract**
+- [x] **Step 4: Run the contract**
 
 ```bash
 uv run pytest tests/contract/test_memory_index.py -q
@@ -471,7 +471,7 @@ uv run pytest tests/contract/test_memory_index.py -q
 
 Expected: `1 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/index tests/contract/test_memory_index.py
@@ -486,7 +486,7 @@ git commit -m "feat: build immutable positional RAM segments"
 - Create: `src/minilucene/query/match.py`
 - Create: `tests/contract/test_query_matching.py`
 
-- [ ] **Step 1: Write term, phrase, prefix, and boolean counterexamples**
+- [x] **Step 1: Write term, phrase, prefix, and boolean counterexamples**
 
 ```python
 from minilucene.query import (
@@ -529,7 +529,7 @@ def test_boolean_and_prefix_have_frozen_set_semantics():
     assert reader.match(query) == {0}
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 uv run pytest tests/contract/test_query_matching.py -q
@@ -537,7 +537,7 @@ uv run pytest tests/contract/test_query_matching.py -q
 
 Expected: query imports fail.
 
-- [ ] **Step 3: Implement immutable query values and set matching**
+- [x] **Step 3: Implement immutable query values and set matching**
 
 `query/model.py` defines frozen dataclasses for `TermQuery`, `PhraseQuery`,
 `PrefixQuery`, `BooleanClause`, `BooleanQuery`, and `MatchAllQuery`, plus an
@@ -579,7 +579,7 @@ def match_query(reader: ReaderView, query: Query) -> set[int]:
 Phrase matching looks up each term's positions for the candidate and tests
 whether `p + query_position` exists for every normalized query position.
 
-- [ ] **Step 4: Run query tests**
+- [x] **Step 4: Run query tests**
 
 ```bash
 uv run pytest tests/contract/test_query_matching.py -q
@@ -587,7 +587,7 @@ uv run pytest tests/contract/test_query_matching.py -q
 
 Expected: `2 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/query tests/contract/test_query_matching.py tests/helpers
@@ -601,7 +601,7 @@ git commit -m "feat: execute positional query AST"
 - Create: `src/minilucene/search/reader.py`
 - Create: `tests/unit/search/test_corpus_stats.py`
 
-- [ ] **Step 1: Write global statistics tests**
+- [x] **Step 1: Write global statistics tests**
 
 ```python
 from tests.helpers.corpus import build_multi_segment_reader
@@ -618,7 +618,7 @@ def test_corpus_stats_span_segments_and_only_live_documents():
     assert stats.average_length("body") == 2.0
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 uv run pytest tests/unit/search/test_corpus_stats.py -q
@@ -626,7 +626,7 @@ uv run pytest tests/unit/search/test_corpus_stats.py -q
 
 Expected: search reader imports fail.
 
-- [ ] **Step 3: Implement immutable reader and stats**
+- [x] **Step 3: Implement immutable reader and stats**
 
 `ReaderView` receives an ordered tuple of immutable segments and equally sized
 live-doc frozensets. It assigns each hit a `DocAddress(segment_generation,
@@ -651,7 +651,7 @@ Build document frequency by counting one live posting per segment document,
 not term frequency. Average length excludes deleted documents and documents
 without that field.
 
-- [ ] **Step 4: Run stats tests**
+- [x] **Step 4: Run stats tests**
 
 ```bash
 uv run pytest tests/unit/search/test_corpus_stats.py -q
@@ -659,7 +659,7 @@ uv run pytest tests/unit/search/test_corpus_stats.py -q
 
 Expected: `1 passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/search tests/unit/search tests/helpers
@@ -674,7 +674,7 @@ git commit -m "feat: snapshot global corpus statistics"
 - Create: `tests/unit/search/test_bm25.py`
 - Create: `tests/contract/test_ranking.py`
 
-- [ ] **Step 1: Write math and ranking counterexamples**
+- [x] **Step 1: Write math and ranking counterexamples**
 
 ```python
 import pytest
@@ -704,7 +704,7 @@ def test_title_boost_changes_ranking():
     assert hits[0].stored_fields["id"] == "0"
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 uv run pytest tests/unit/search/test_bm25.py tests/contract/test_ranking.py -q
@@ -712,7 +712,7 @@ uv run pytest tests/unit/search/test_bm25.py tests/contract/test_ranking.py -q
 
 Expected: BM25 and scorer imports fail.
 
-- [ ] **Step 3: Implement BM25 and scorer weights**
+- [x] **Step 3: Implement BM25 and scorer weights**
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -736,7 +736,7 @@ queries sum their component term scores only for phrase-matching documents.
 Boolean `MUST_NOT` clauses are never scored. Multiply each contribution by
 the field's frozen boost.
 
-- [ ] **Step 4: Run BM25 and ranking tests**
+- [x] **Step 4: Run BM25 and ranking tests**
 
 ```bash
 uv run pytest tests/unit/search/test_bm25.py tests/contract/test_ranking.py -q
@@ -744,7 +744,7 @@ uv run pytest tests/unit/search/test_bm25.py tests/contract/test_ranking.py -q
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene/search tests/unit/search/test_bm25.py tests/contract/test_ranking.py
@@ -761,7 +761,7 @@ git commit -m "feat: rank with global BM25 and field boosts"
 - Create: `tests/unit/search/test_topk.py`
 - Create: `tests/contract/test_memory_search.py`
 
-- [ ] **Step 1: Write heap-oracle and public search tests**
+- [x] **Step 1: Write heap-oracle and public search tests**
 
 ```python
 from minilucene import MemoryIndex, Schema, TextField
@@ -789,7 +789,7 @@ def test_public_memory_index_returns_stored_fields():
     assert result.hits[0].stored_fields == {"body": "kafka replicas"}
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [x] **Step 2: Run and verify RED**
 
 ```bash
 uv run pytest tests/unit/search/test_topk.py tests/contract/test_memory_search.py -q
@@ -797,7 +797,7 @@ uv run pytest tests/unit/search/test_topk.py tests/contract/test_memory_search.p
 
 Expected: collector and public `MemoryIndex` are missing.
 
-- [ ] **Step 3: Implement the bounded collector and facade**
+- [x] **Step 3: Implement the bounded collector and facade**
 
 `SearchHit` contains score, segment generation, local doc ID, and an immutable
 stored-field mapping. `TopDocs` contains total hit count and an ordered hit
@@ -813,7 +813,7 @@ segment, builds one `ReaderView`, and delegates to `IndexSearcher`. The public
 facade accepts keyword arguments for documents and exports the real schema,
 query, and result values from `minilucene.__init__`.
 
-- [ ] **Step 4: Run focused and full tests**
+- [x] **Step 4: Run focused and full tests**
 
 ```bash
 uv run pytest tests/unit/search/test_topk.py tests/contract/test_memory_search.py -q
@@ -822,7 +822,7 @@ uv run pytest -q
 
 Expected: both commands exit `0`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/minilucene tests/unit/search/test_topk.py tests/contract/test_memory_search.py
@@ -835,7 +835,7 @@ git commit -m "feat: expose bounded in-memory Top-K search"
 - Create: `tests/acceptance/test_phase1_retrieval_kernel.py`
 - Create: `docs/phase1-retrieval-kernel.md`
 
-- [ ] **Step 1: Write one end-to-end kernel acceptance**
+- [x] **Step 1: Write one end-to-end kernel acceptance**
 
 ```python
 from minilucene import KeywordField, MemoryIndex, Schema, TextField
@@ -870,7 +870,7 @@ def test_fielded_phrase_bm25_topk_and_stored_fields_close_one_loop():
     assert result.hits[0].stored_fields["id"] == "1"
 ```
 
-- [ ] **Step 2: Run the acceptance and full verification**
+- [x] **Step 2: Run the acceptance and full verification**
 
 ```bash
 uv run pytest tests/acceptance/test_phase1_retrieval_kernel.py -q
@@ -882,13 +882,13 @@ git diff --check
 
 Expected: every command exits `0`.
 
-- [ ] **Step 3: Write the phase report**
+- [x] **Step 3: Write the phase report**
 
 `docs/phase1-retrieval-kernel.md` records the public API, exact query semantics,
 BM25 defaults, Top-K tie-break, test commands, and deliberate absence of disk,
 refresh, parser, highlighting, vector, and network behavior.
 
-- [ ] **Step 4: Commit Phase 1 acceptance**
+- [x] **Step 4: Commit Phase 1 acceptance**
 
 ```bash
 git add docs/phase1-retrieval-kernel.md tests/acceptance/test_phase1_retrieval_kernel.py

@@ -7,13 +7,19 @@ not claim Apache Lucene API or file-format compatibility.
 | Feature | Public API | Semantic boundary | Executable test node ID |
 |---|---|---|---|
 | Field schema | `Schema`, `TextField`, `KeywordField`, `StoredField` | stored, indexed, tokenized, positions, and boost stay independent | `tests/contract/test_schema.py::test_stored_indexed_and_tokenized_are_independent` |
+| Index lifecycle | `Index.create`, `Index.open` | persisted immutable schema fingerprints define one index | `tests/contract/test_index_lifecycle.py::test_create_open_and_schema_fingerprint` |
+| Single writer | `Index.writer` | a second mutation owner cannot open for the same index | `tests/contract/test_index_lifecycle.py::test_only_one_writer_can_be_open` |
 | Positional analyzer | `StandardAnalyzer.analyze` | lowercase and stopword filtering preserve original offsets and position gaps | `tests/unit/analysis/test_pipeline.py::test_standard_analysis_preserves_offsets_and_stopword_gap` |
+| Exact keyword analysis | `KeywordField` | one complete value becomes one exact term without positions | `tests/contract/test_memory_index.py::test_keyword_field_indexes_one_exact_term_without_positions` |
 | Immutable RAM segment | `RamIndexBuilder.freeze` | postings, positions, lengths, and stored values freeze together | `tests/contract/test_memory_index.py::test_ram_segment_contains_positions_lengths_and_only_stored_values` |
+| Term query and stored fields | `TermQuery`, `MemoryIndex.search` | exact term matches return only declared stored values | `tests/contract/test_memory_search.py::test_public_memory_index_returns_stored_fields` |
 | Phrase query | `PhraseQuery` | exact phrase matching depends on positions rather than term co-occurrence | `tests/contract/test_query_matching.py::test_phrase_requires_consecutive_positions` |
 | Boolean query | `BooleanQuery` | MUST, SHOULD, and MUST_NOT use the frozen set semantics | `tests/contract/test_query_matching.py::test_should_is_required_without_must_and_optional_with_must` |
+| Match-all query | `MatchAllQuery` | total hits can be counted without retaining result objects | `tests/contract/test_memory_search.py::test_match_all_can_report_total_without_returning_hits` |
 | Global BM25 | `MemoryIndex.search`, `IndexReader.search` | TF saturation, IDF, length norm, and field boost use one live corpus view | `tests/evaluation/test_reference_corpus.py::test_bm25_term_frequency_saturates_instead_of_growing_linearly` |
 | Bounded Top-K | `search(..., top_k=K)` | collector retains at most K hits while counting all matches | `tests/unit/search/test_topk.py::test_heap_topk_matches_complete_sort_oracle` |
 | Educational segment codec | `IndexWriter.flush` | deterministic immutable files round-trip postings and stored data | `tests/storage/test_segment_store.py::test_segment_store_open_round_trips_image` |
+| Flush visibility | `IndexWriter.flush` | flush creates a segment without changing the committed manifest | `tests/storage/test_writer_flush.py::test_flush_creates_segment_but_does_not_change_manifest` |
 | Atomic commit | `IndexWriter.commit` | manifest replacement chooses the old or new committed root | `tests/storage/test_commit_recovery.py::test_manifest_replace_failure_preserves_previous_commit` |
 | NRT refresh | `IndexWriter.refresh` | flushed state becomes reader-visible without becoming restart-durable | `tests/nrt/test_refresh_visibility.py::test_uncommitted_refresh_state_disappears_after_process_reopen` |
 | Reader snapshot | `Index.open_reader` | an existing reader remains a point-in-time view after later commits | `tests/nrt/test_reader_snapshot.py::test_reader_snapshot_never_changes_after_later_commit` |
@@ -26,8 +32,18 @@ not claim Apache Lucene API or file-format compatibility.
 | Prefix rewrite | `IndexReader.rewrite` | sorted term expansion has a hard fail-fast cap | `tests/contract/test_prefix_rewrite.py::test_prefix_expansion_fails_instead_of_truncating` |
 | Safe highlighting | `search_text(..., highlight_fields=...)` | stored text is re-analyzed by offset and all output is HTML-escaped | `tests/contract/test_highlighting.py::test_highlight_uses_original_offsets_and_escapes_text` |
 | Relevance metrics | `precision_at_k`, `recall_at_k`, `mean_reciprocal_rank`, `ndcg_at_k` | pure functions consume rankings without importing index internals | `tests/evaluation/test_metrics.py::test_binary_metrics` |
+| Graded ranking metric | `ndcg_at_k` | graded gains are discounted by rank and normalized by the ideal order | `tests/evaluation/test_metrics.py::test_ndcg_uses_graded_relevance` |
 | Reference relevance corpus | test fixture API | rankings and approximate scores survive commit, reopen, and merge | `tests/evaluation/test_reference_corpus.py::test_rankings_survive_commit_reopen_and_merge` |
 | Local CLI adapter | `minilucene` | create, add, search, delete, and merge call only public Python APIs | `tests/contract/test_cli.py::test_cli_create_add_search_delete_and_merge` |
+| Validation failure atomicity | `IndexWriter.add_document` | invalid input fails before the RAM builder mutates | `tests/contract/test_memory_index.py::test_failed_document_validation_does_not_mutate_builder` |
+| Segment publish failure | `IndexWriter.flush` | failed data writes leave neither a final segment nor a temporary directory | `tests/storage/test_segment_store.py::test_failed_publish_never_creates_final_directory` |
+| Complete orphan recovery | `Index.open` | a complete segment absent from the manifest is not restart-visible | `tests/storage/test_commit_recovery.py::test_complete_segment_without_manifest_is_ignored_after_reopen` |
+| Checksum corruption | `Index.open_reader` | changed segment bytes fail closed before search | `tests/storage/test_segment_store.py::test_segment_store_rejects_checksum_corruption` |
+| Stale reader after mutation | `IndexReader` | old readers retain their original documents across NRT mutation and merge | `tests/acceptance/test_phase3_nrt_mutation.py::test_nrt_mutation_merge_recovery_and_owner_zero` |
+| Merge publish failure | `IndexWriter.merge` | failed output publication does not swap the writer segment set | `tests/acceptance/test_failure_matrix.py::test_merge_publish_failure_preserves_writer_set` |
+| Close failure aggregation | `IndexWriter.close` | cleanup attempts aggregate failures and repeated close is safe | `tests/acceptance/test_failure_matrix.py::test_repeated_close_aggregates_cleanup_failures` |
+| Owner-zero closeout | `Index.lifecycle_diagnostics` | explicit close releases every reader, writer, segment, lock, and temporary job | `tests/acceptance/test_owner_zero.py::test_every_explicit_owner_and_temporary_job_reaches_zero` |
+| Public end-to-end loop | documented Python API | index, query, rank, highlight, refresh, mutate, merge, reopen, and evaluate compose | `tests/acceptance/test_end_to_end.py::test_documented_public_api_closes_the_v1_product_loop` |
 | No TCP or HTTP adapter | none | V1 exposes direct Python and local CLI boundaries only | `tests/contract/test_behavior_matrix.py::test_v1_source_excludes_tcp_and_http_adapters` |
 | No distributed coordination | none | replication, heartbeat, election, and clustering are outside V1 | `tests/contract/test_behavior_matrix.py::test_v1_source_excludes_distributed_coordination` |
 | No vector retrieval | none | vector fields, ANN, and hybrid retrieval remain V2 work | `tests/contract/test_behavior_matrix.py::test_v1_source_excludes_vector_retrieval` |
