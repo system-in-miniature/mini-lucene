@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING, Self
 from minilucene.errors import WriterAlreadyOpenError
 from minilucene.index.memory import RamIndexBuilder
 from minilucene.storage.image import SegmentImage
+from minilucene.storage.manifest import (
+    Manifest,
+    ManifestStore,
+    SegmentCommit,
+)
 from minilucene.storage.segment_store import (
     SegmentDescriptor,
     SegmentStore,
@@ -57,6 +62,7 @@ class IndexWriter:
             os.close(descriptor)
         manifest = index.manifest()
         self._segment_store = SegmentStore(index.path)
+        self._manifest_store = ManifestStore(index.path)
         self._buffer = RamIndexBuilder(index.schema)
         self._segment_generations = list(manifest.segment_generations)
         self._next_segment_generation = (
@@ -106,6 +112,25 @@ class IndexWriter:
         self._next_segment_generation += 1
         self._buffer = RamIndexBuilder(self.index.schema)
         return descriptor
+
+    def commit(self) -> Manifest:
+        self._ensure_open()
+        self.flush()
+        for generation in self._segment_generations:
+            self._segment_store.open(
+                generation, self.index.schema.fingerprint
+            )
+        current = self.index.manifest()
+        manifest = Manifest.next_from(
+            current,
+            segments=tuple(
+                SegmentCommit(segment_generation=generation)
+                for generation in self._segment_generations
+            ),
+            next_segment_generation=self._next_segment_generation,
+        )
+        self._manifest_store.write_atomic(manifest)
+        return manifest
 
     def close(self) -> None:
         if self._closed:

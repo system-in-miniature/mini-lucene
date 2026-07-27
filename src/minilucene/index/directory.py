@@ -6,9 +6,11 @@ from minilucene.errors import (
     IndexNotFoundError,
     SchemaMismatchError,
 )
+from minilucene.reader import IndexReader
 from minilucene.schema import Schema
 from minilucene.storage.filesystem import FileSystemOps
 from minilucene.storage.manifest import Manifest, ManifestStore
+from minilucene.storage.segment_store import SegmentStore
 
 _SCHEMA_FORMAT_VERSION = 1
 
@@ -114,3 +116,15 @@ class Index:
         from minilucene.writer import IndexWriter
 
         return IndexWriter(self, **options)
+
+    def open_reader(self) -> IndexReader:
+        manifest = self.manifest()
+        segment_store = SegmentStore(self.path)
+        segments = tuple(
+            segment_store.open(
+                segment.segment_generation,
+                manifest.schema_fingerprint,
+            )
+            for segment in manifest.segments
+        )
+        return IndexReader(self.schema, segments)
