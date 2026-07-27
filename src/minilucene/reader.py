@@ -86,6 +86,12 @@ class IndexReader(ReaderView):
         self._ensure_open()
         return super().field_length(field, doc_id)
 
+    def rewrite(
+        self, query: Query, *, max_terms: int | None = None
+    ) -> Query:
+        self._ensure_open()
+        return super().rewrite(query, max_terms=max_terms)
+
     def close(self) -> None:
         if self._closed:
             return

@@ -147,6 +147,21 @@ class ReaderView:
     def match(self, query: Query) -> set[int]:
         return match_query(self, query)
 
+    def rewrite(
+        self, query: Query, *, max_terms: int | None = None
+    ) -> Query:
+        from minilucene.search.rewrite import rewrite_query
+
+        return rewrite_query(
+            self,
+            query,
+            max_terms=(
+                self.max_prefix_expansions
+                if max_terms is None
+                else max_terms
+            ),
+        )
+
     def _build_corpus_stats(self) -> CorpusStats:
         doc_frequencies: dict[tuple[str, str], int] = {}
         for segment, live in zip(
