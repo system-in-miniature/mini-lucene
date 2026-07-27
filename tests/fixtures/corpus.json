@@ -1,0 +1,34 @@
+{
+  "documents": [
+    {
+      "id": "doc-1",
+      "title": "Understanding Kafka Replication",
+      "body": "Kafka uses partition leaders and follower replicas.",
+      "author": "jonah"
+    },
+    {
+      "id": "doc-2",
+      "title": "RabbitMQ Messaging",
+      "body": "RabbitMQ routes messages through exchanges and queues.",
+      "author": "sam"
+    },
+    {
+      "id": "doc-3",
+      "title": "Distributed Systems",
+      "body": "Distributed applications improve the system through replication.",
+      "author": "jonah"
+    },
+    {
+      "id": "doc-4",
+      "title": "Search Ranking",
+      "body": "BM25 balances term frequency and document length.",
+      "author": "lee"
+    },
+    {
+      "id": "doc-5",
+      "title": "Follower Operations",
+      "body": "A follower replica can refresh its local snapshot.",
+      "author": "sam"
+    }
+  ]
+}

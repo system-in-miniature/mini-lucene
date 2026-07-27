@@ -1,0 +1,14 @@
+{
+  "qrels": {
+    "q-kafka": {
+      "doc-1": 3
+    },
+    "q-followers": {
+      "doc-1": 3,
+      "doc-5": 2
+    },
+    "q-ranking": {
+      "doc-4": 3
+    }
+  }
+}

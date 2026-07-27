@@ -1,0 +1,19 @@
+{
+  "queries": [
+    {
+      "id": "q-kafka",
+      "text": "kafka",
+      "default_field": "body"
+    },
+    {
+      "id": "q-followers",
+      "text": "\"follower replicas\" OR \"follower replica\"",
+      "default_field": "body"
+    },
+    {
+      "id": "q-ranking",
+      "text": "title:ranking OR body:frequency",
+      "default_field": "body"
+    }
+  ]
+}
