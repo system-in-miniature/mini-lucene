@@ -16,3 +16,7 @@ class SchemaMismatchError(MiniLuceneError):
 
 class WriterAlreadyOpenError(MiniLuceneError):
     pass
+
+
+class AlreadyClosedError(MiniLuceneError):
+    pass

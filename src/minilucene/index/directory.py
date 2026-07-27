@@ -127,4 +127,8 @@ class Index:
             )
             for segment in manifest.segments
         )
-        return IndexReader(self.schema, segments)
+        return IndexReader(
+            self.schema,
+            segments,
+            commit_generation=manifest.commit_generation,
+        )
