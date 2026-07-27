@@ -183,8 +183,9 @@ class IndexWriter:
             commit_generation=None,
         )
 
-    def delete_by_term(self, field: str, term: str) -> int:
-        self._ensure_open()
+    def _derive_delete(
+        self, field: str, term: str
+    ) -> tuple[dict[int, frozenset[int]], set[int], set[int], int]:
         if field not in self.index.schema:
             raise ValueError(f"unknown field: {field}")
         if not self.index.schema[field].indexed:
@@ -216,9 +217,51 @@ class IndexWriter:
         )
         next_buffer_live_docs = self._buffer_live_docs - buffered_matches
         deleted += len(buffered_matches)
+        return (
+            derived_masks,
+            changed_generations,
+            next_buffer_live_docs,
+            deleted,
+        )
+
+    def delete_by_term(self, field: str, term: str) -> int:
+        self._ensure_open()
+        (
+            derived_masks,
+            changed_generations,
+            next_buffer_live_docs,
+            deleted,
+        ) = self._derive_delete(field, term)
+        self._live_docs = derived_masks
+        self._dirty_live_docs.update(changed_generations)
+        self._buffer_live_docs = next_buffer_live_docs
+        return deleted
+
+    def update_document(
+        self,
+        *,
+        field: str,
+        term: str,
+        **replacement: object,
+    ) -> int:
+        self._ensure_open()
+        prepared = self._buffer.prepare_document(replacement)
+        (
+            derived_masks,
+            changed_generations,
+            next_buffer_live_docs,
+            deleted,
+        ) = self._derive_delete(field, term)
+
+        next_buffer = RamIndexBuilder(self.index.schema)
+        for document in self._buffer.documents:
+            next_buffer.add_document(dict(document))
+        replacement_doc_id = next_buffer.add_prepared(prepared)
+        next_buffer_live_docs.add(replacement_doc_id)
 
         self._live_docs = derived_masks
         self._dirty_live_docs.update(changed_generations)
+        self._buffer = next_buffer
         self._buffer_live_docs = next_buffer_live_docs
         return deleted
 
