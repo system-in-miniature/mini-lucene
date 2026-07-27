@@ -50,6 +50,10 @@ class ReaderView:
         )
         self.corpus_stats = self._build_corpus_stats()
 
+    @property
+    def num_live_docs(self) -> int:
+        return len(self.live_doc_ids)
+
     def _resolve(self, doc_id: int) -> tuple[int, MemorySegment, int]:
         if doc_id < 0 or doc_id >= self.max_doc:
             raise IndexError(f"document ID outside reader: {doc_id}")

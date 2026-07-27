@@ -9,6 +9,7 @@ from minilucene.errors import (
 from minilucene.reader import IndexReader
 from minilucene.schema import Schema
 from minilucene.storage.filesystem import FileSystemOps
+from minilucene.storage.live_docs import LiveDocsStore
 from minilucene.storage.manifest import Manifest, ManifestStore
 from minilucene.storage.segment_store import SegmentStore
 
@@ -127,8 +128,23 @@ class Index:
             )
             for segment in manifest.segments
         )
+        live_docs_store = LiveDocsStore(self.path)
+        live_docs = tuple(
+            frozenset(range(image.max_doc))
+            if segment.live_docs_generation is None
+            else live_docs_store.read(
+                segment_generation=segment.segment_generation,
+                live_docs_generation=segment.live_docs_generation,
+                expected_checksum=segment.live_docs_checksum or "",
+                max_doc=image.max_doc,
+            )
+            for segment, image in zip(
+                manifest.segments, segments, strict=True
+            )
+        )
         return IndexReader(
             self.schema,
             segments,
+            live_docs,
             commit_generation=manifest.commit_generation,
         )

@@ -37,6 +37,7 @@ class PreparedDocument:
 class RamIndexBuilder:
     def __init__(self, schema: Schema) -> None:
         self.schema = schema
+        self._documents: list[FrozenDocument] = []
         self._stored_documents: list[FrozenDocument] = []
         self._field_lengths: dict[str, list[int]] = {
             name: [] for name, field in schema.items() if field.indexed
@@ -53,6 +54,10 @@ class RamIndexBuilder:
     @property
     def posting_count(self) -> int:
         return self._posting_count
+
+    @property
+    def documents(self) -> tuple[FrozenDocument, ...]:
+        return tuple(self._documents)
 
     def prepare_document(
         self, values: Mapping[str, object]
@@ -80,6 +85,7 @@ class RamIndexBuilder:
         if prepared.schema_fingerprint != self.schema.fingerprint:
             raise ValueError("prepared document schema does not match builder")
         doc_id = self.document_count
+        self._documents.append(prepared.document)
         self._stored_documents.append(prepared.stored)
         for name, lengths in self._field_lengths.items():
             tokens = prepared.analyzed.get(name, ())
@@ -104,6 +110,12 @@ class RamIndexBuilder:
 
     def add_document(self, values: Mapping[str, object]) -> int:
         return self.add_prepared(self.prepare_document(values))
+
+    def matching_doc_ids(self, field: str, term: str) -> frozenset[int]:
+        return frozenset(
+            posting.doc_id
+            for posting in self._postings.get(field, {}).get(term, ())
+        )
 
     def freeze(self, *, generation: int) -> MemorySegment:
         if generation < 0:

@@ -126,6 +126,16 @@ class LiveDocsStore:
             path=destination.relative_to(self.root),
         )
 
+    def generation_exists(
+        self, segment_generation: int, live_docs_generation: int
+    ) -> bool:
+        return self.fs.exists(
+            self.root
+            / "segments"
+            / self._segment_name(segment_generation)
+            / self._live_name(live_docs_generation)
+        )
+
     def read(
         self,
         *,
