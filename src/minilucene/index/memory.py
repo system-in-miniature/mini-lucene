@@ -1,5 +1,6 @@
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 from minilucene.analysis import KeywordAnalyzer, StandardAnalyzer
@@ -18,6 +19,21 @@ def _analyze(field: FieldType, value: str) -> tuple[Token, ...]:
     raise ValueError(f"unknown analyzer: {field.analyzer_name}")
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedDocument:
+    schema_fingerprint: str
+    document: FrozenDocument
+    stored: FrozenDocument
+    analyzed: Mapping[str, tuple[Token, ...]]
+
+    @property
+    def posting_count(self) -> int:
+        return sum(
+            len({token.term for token in tokens})
+            for tokens in self.analyzed.values()
+        )
+
+
 class RamIndexBuilder:
     def __init__(self, schema: Schema) -> None:
         self.schema = schema
@@ -28,19 +44,24 @@ class RamIndexBuilder:
         self._postings: dict[
             str, dict[str, list[Posting]]
         ] = defaultdict(lambda: defaultdict(list))
+        self._posting_count = 0
 
     @property
     def document_count(self) -> int:
         return len(self._stored_documents)
 
-    def add_document(self, values: Mapping[str, object]) -> int:
+    @property
+    def posting_count(self) -> int:
+        return self._posting_count
+
+    def prepare_document(
+        self, values: Mapping[str, object]
+    ) -> PreparedDocument:
         document = freeze_document(self.schema, values)
         prepared: dict[str, tuple[Token, ...]] = {}
         for name, field in self.schema.items():
             if field.indexed and name in document:
                 prepared[name] = _analyze(field, document[name])
-
-        doc_id = self.document_count
         stored = MappingProxyType(
             {
                 name: value
@@ -48,10 +69,20 @@ class RamIndexBuilder:
                 if self.schema[name].stored
             }
         )
-        self._stored_documents.append(stored)
+        return PreparedDocument(
+            schema_fingerprint=self.schema.fingerprint,
+            document=document,
+            stored=stored,
+            analyzed=MappingProxyType(dict(sorted(prepared.items()))),
+        )
 
+    def add_prepared(self, prepared: PreparedDocument) -> int:
+        if prepared.schema_fingerprint != self.schema.fingerprint:
+            raise ValueError("prepared document schema does not match builder")
+        doc_id = self.document_count
+        self._stored_documents.append(prepared.stored)
         for name, lengths in self._field_lengths.items():
-            tokens = prepared.get(name, ())
+            tokens = prepared.analyzed.get(name, ())
             lengths.append(len(tokens))
             positions_by_term: dict[str, list[int]] = defaultdict(list)
             for token in tokens:
@@ -68,7 +99,11 @@ class RamIndexBuilder:
                         positions=posting_positions,
                     )
                 )
+                self._posting_count += 1
         return doc_id
+
+    def add_document(self, values: Mapping[str, object]) -> int:
+        return self.add_prepared(self.prepare_document(values))
 
     def freeze(self, *, generation: int) -> MemorySegment:
         if generation < 0:

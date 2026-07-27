@@ -110,7 +110,7 @@ class Index:
     def manifest(self) -> Manifest:
         return self._manifest_store.read()
 
-    def writer(self):
+    def writer(self, **options):
         from minilucene.writer import IndexWriter
 
-        return IndexWriter(self)
+        return IndexWriter(self, **options)
