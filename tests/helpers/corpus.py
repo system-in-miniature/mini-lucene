@@ -1,5 +1,7 @@
+from dataclasses import dataclass
+
 from minilucene.index.memory import RamIndexBuilder
-from minilucene.schema import Schema, TextField
+from minilucene.schema import KeywordField, Schema, TextField
 
 
 class SingleSegmentReader:
@@ -73,3 +75,44 @@ def build_multi_segment_reader(*, segments, deleted):
         live_docs.append(frozenset(range(segment.max_doc)) - frozenset(removed))
     schema = Schema(body=TextField(stored=True))
     return ReaderView(schema, tuple(built), tuple(live_docs))
+
+
+@dataclass(frozen=True)
+class OracleHit:
+    score: float
+    stored_fields: object
+    segment_generation: int
+    local_doc_id: int
+
+
+def search_memory(*, documents, query, title_boost=1.0):
+    from minilucene.search.reader import ReaderView
+    from minilucene.search.scorer import score_query
+
+    schema = Schema(
+        id=KeywordField(stored=True),
+        title=TextField(stored=True, boost=title_boost),
+        body=TextField(stored=True),
+    )
+    builder = RamIndexBuilder(schema)
+    for index, document in enumerate(documents):
+        builder.add_document({"id": str(index), **document})
+    reader = ReaderView(schema, (builder.freeze(generation=0),))
+    scores = score_query(reader, query)
+    hits = [
+        OracleHit(
+            score=score,
+            stored_fields=reader.stored_fields(doc_id),
+            segment_generation=reader.address(doc_id).segment_generation,
+            local_doc_id=reader.address(doc_id).local_doc_id,
+        )
+        for doc_id, score in scores.items()
+    ]
+    return sorted(
+        hits,
+        key=lambda hit: (
+            -hit.score,
+            hit.segment_generation,
+            hit.local_doc_id,
+        ),
+    )
