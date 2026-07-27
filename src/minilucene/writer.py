@@ -105,6 +105,10 @@ class IndexWriter:
                 segment_commit.segment_generation
             ] = metadata
         self._dirty_live_docs: set[int] = set()
+        self._registry = index._registry
+        self._owner_id = self._registry.acquire(
+            "writer", tuple(self._segment_generations)
+        )
 
     @property
     def segment_generations(self) -> tuple[int, ...]:
@@ -162,6 +166,9 @@ class IndexWriter:
         self._next_segment_generation = generation + 1
         self._buffer = RamIndexBuilder(self.index.schema)
         self._buffer_live_docs = set()
+        self._registry.replace(
+            self._owner_id, tuple(self._segment_generations)
+        )
         return descriptor
 
     def refresh(self) -> IndexReader:
@@ -182,6 +189,7 @@ class IndexWriter:
             segments,
             live_docs,
             commit_generation=None,
+            registry=self._registry,
         )
 
     def _derive_delete(
@@ -334,6 +342,9 @@ class IndexWriter:
         self._live_docs_metadata = next_metadata
         self._dirty_live_docs.difference_update(selected_set)
         self._next_segment_generation = generation + 1
+        self._registry.replace(
+            self._owner_id, tuple(self._segment_generations)
+        )
         return descriptor
 
     def commit(self) -> Manifest:
@@ -402,6 +413,7 @@ class IndexWriter:
         if self._closed:
             return
         self._closed = True
+        self._registry.release(self._owner_id)
         try:
             self._lock_path.unlink()
         except FileNotFoundError:

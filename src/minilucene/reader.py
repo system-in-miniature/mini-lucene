@@ -10,6 +10,7 @@ from minilucene.search.reader import ReaderView
 from minilucene.search.searcher import IndexSearcher
 from minilucene.snapshot import ReaderSnapshot, SegmentSnapshot
 from minilucene.storage.image import SegmentImage
+from minilucene.storage.registry import SegmentRegistry
 
 
 class IndexReader(ReaderView):
@@ -20,6 +21,7 @@ class IndexReader(ReaderView):
         live_docs: tuple[frozenset[int], ...] | None = None,
         *,
         commit_generation: int | None = None,
+        registry: SegmentRegistry | None = None,
     ) -> None:
         super().__init__(  # type: ignore[arg-type]
             schema,
@@ -50,6 +52,15 @@ class IndexReader(ReaderView):
             commit_generation=commit_generation,
         )
         self._closed = False
+        self._registry = registry
+        self._owner_id = (
+            registry.acquire(
+                "reader",
+                tuple(segment.generation for segment in segments),
+            )
+            if registry is not None
+            else None
+        )
 
     def _ensure_open(self) -> None:
         if self._closed:
@@ -76,7 +87,12 @@ class IndexReader(ReaderView):
         return super().field_length(field, doc_id)
 
     def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
+        if self._registry is not None and self._owner_id is not None:
+            self._registry.release(self._owner_id)
+            self._owner_id = None
 
     def __enter__(self) -> Self:
         self._ensure_open()

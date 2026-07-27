@@ -11,6 +11,10 @@ from minilucene.schema import Schema
 from minilucene.storage.filesystem import FileSystemOps
 from minilucene.storage.live_docs import LiveDocsStore
 from minilucene.storage.manifest import Manifest, ManifestStore
+from minilucene.storage.registry import (
+    LifecycleDiagnostics,
+    registry_for,
+)
 from minilucene.storage.segment_store import SegmentStore
 
 _SCHEMA_FORMAT_VERSION = 1
@@ -21,6 +25,7 @@ class Index:
         self.path = Path(path)
         self.schema = schema
         self._manifest_store = ManifestStore(self.path)
+        self._registry = registry_for(self.path)
 
     @classmethod
     def create(cls, path: Path, schema: Schema) -> "Index":
@@ -147,4 +152,13 @@ class Index:
             segments,
             live_docs,
             commit_generation=manifest.commit_generation,
+            registry=self._registry,
         )
+
+    def collect_garbage(self) -> tuple[Path, ...]:
+        return self._registry.collect_garbage(
+            manifest_generations=self.manifest().segment_generations
+        )
+
+    def lifecycle_diagnostics(self) -> LifecycleDiagnostics:
+        return self._registry.diagnostics()
