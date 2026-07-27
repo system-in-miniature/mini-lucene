@@ -41,5 +41,8 @@ class FileSystemOps:
     def remove_tree(self, path: Path) -> None:
         shutil.rmtree(path)
 
+    def remove_file(self, path: Path) -> None:
+        Path(path).unlink()
+
     def list_directory(self, path: Path) -> tuple[Path, ...]:
         return tuple(Path(path).iterdir())
