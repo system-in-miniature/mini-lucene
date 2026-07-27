@@ -6,6 +6,7 @@ class SingleSegmentReader:
     def __init__(self, segment):
         self.segment = segment
         self.max_doc = segment.max_doc
+        self.live_doc_ids = frozenset(range(segment.max_doc))
         self.max_prefix_expansions = 1_024
 
     def postings(self, field, term):
@@ -53,3 +54,22 @@ def build_memory_reader(documents):
     for document in documents:
         builder.add_document({"body": document})
     return SingleSegmentReader(builder.freeze(generation=0))
+
+
+def build_multi_segment_reader(*, segments, deleted):
+    from minilucene.search.reader import ReaderView
+
+    built = []
+    live_docs = []
+    for generation, (documents, removed) in enumerate(
+        zip(segments, deleted, strict=True),
+        start=1,
+    ):
+        builder = RamIndexBuilder(Schema(body=TextField(stored=True)))
+        for document in documents:
+            builder.add_document({"body": document})
+        segment = builder.freeze(generation=generation)
+        built.append(segment)
+        live_docs.append(frozenset(range(segment.max_doc)) - frozenset(removed))
+    schema = Schema(body=TextField(stored=True))
+    return ReaderView(schema, tuple(built), tuple(live_docs))

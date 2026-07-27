@@ -18,6 +18,7 @@ from minilucene.query.model import (
 class MatchReader(Protocol):
     max_doc: int
     max_prefix_expansions: int
+    live_doc_ids: frozenset[int]
 
     def postings(self, field: str, term: str) -> Iterable[Posting]: ...
 
@@ -104,7 +105,7 @@ def match_query(reader: MatchReader, query: Query) -> set[int]:
                 for term in terms
             )
         case MatchAllQuery():
-            return set(range(reader.max_doc))
+            return set(reader.live_doc_ids)
         case BooleanQuery(clauses):
             return match_boolean(reader, clauses)
     raise QueryError(f"unsupported query: {type(query).__name__}")
