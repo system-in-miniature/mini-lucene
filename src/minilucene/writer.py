@@ -1,10 +1,15 @@
 import json
 import os
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from minilucene.errors import WriterAlreadyOpenError
+from minilucene.errors import (
+    AlreadyClosedError,
+    CloseError,
+    WriterAlreadyOpenError,
+)
 from minilucene.index.memory import RamIndexBuilder
 from minilucene.merge import merge_segment_images
 from minilucene.reader import IndexReader
@@ -34,6 +39,12 @@ class FlushPolicy:
             raise ValueError("flush thresholds must be positive")
 
 
+class WriterState(StrEnum):
+    OPEN = "OPEN"
+    CLOSING = "CLOSING"
+    CLOSED = "CLOSED"
+
+
 class IndexWriter:
     def __init__(
         self,
@@ -44,7 +55,7 @@ class IndexWriter:
         self.index = index
         self.flush_policy = flush_policy or FlushPolicy()
         self._lock_path = Path(index.path) / ".writer.lock"
-        self._closed = False
+        self._state = WriterState.OPEN
         try:
             descriptor = os.open(
                 self._lock_path,
@@ -123,8 +134,8 @@ class IndexWriter:
         return self._buffer.posting_count
 
     def _ensure_open(self) -> None:
-        if self._closed:
-            raise RuntimeError("writer is closed")
+        if self._state is not WriterState.OPEN:
+            raise AlreadyClosedError("writer is closed")
 
     def add_document(self, **values: object) -> int:
         self._ensure_open()
@@ -410,14 +421,25 @@ class IndexWriter:
         return manifest
 
     def close(self) -> None:
-        if self._closed:
+        if self._state is WriterState.CLOSED:
             return
-        self._closed = True
-        self._registry.release(self._owner_id)
+        if self._state is WriterState.CLOSING:
+            return
+        self._state = WriterState.CLOSING
+        errors: list[BaseException] = []
+        try:
+            self._registry.release(self._owner_id)
+        except (KeyError, OSError, RuntimeError) as error:
+            errors.append(error)
         try:
             self._lock_path.unlink()
         except FileNotFoundError:
             pass
+        except (OSError, RuntimeError) as error:
+            errors.append(error)
+        self._state = WriterState.CLOSED
+        if errors:
+            raise CloseError(tuple(errors))
 
     def __enter__(self) -> Self:
         return self

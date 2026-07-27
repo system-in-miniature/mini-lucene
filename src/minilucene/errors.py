@@ -20,3 +20,11 @@ class WriterAlreadyOpenError(MiniLuceneError):
 
 class AlreadyClosedError(MiniLuceneError):
     pass
+
+
+class CloseError(MiniLuceneError):
+    def __init__(self, errors: tuple[BaseException, ...]) -> None:
+        self.errors = errors
+        super().__init__(
+            f"close encountered {len(errors)} cleanup error(s)"
+        )

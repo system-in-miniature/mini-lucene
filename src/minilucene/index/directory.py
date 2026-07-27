@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
+from typing import Self
 
 from minilucene.errors import (
+    AlreadyClosedError,
     IndexAlreadyExistsError,
     IndexNotFoundError,
     SchemaMismatchError,
@@ -26,6 +28,11 @@ class Index:
         self.schema = schema
         self._manifest_store = ManifestStore(self.path)
         self._registry = registry_for(self.path)
+        self._closed = False
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise AlreadyClosedError("index is closed")
 
     @classmethod
     def create(cls, path: Path, schema: Schema) -> "Index":
@@ -116,14 +123,17 @@ class Index:
         return schema
 
     def manifest(self) -> Manifest:
+        self._ensure_open()
         return self._manifest_store.read()
 
     def writer(self, **options):
+        self._ensure_open()
         from minilucene.writer import IndexWriter
 
         return IndexWriter(self, **options)
 
     def open_reader(self) -> IndexReader:
+        self._ensure_open()
         manifest = self.manifest()
         segment_store = SegmentStore(self.path)
         segments = tuple(
@@ -156,9 +166,21 @@ class Index:
         )
 
     def collect_garbage(self) -> tuple[Path, ...]:
+        self._ensure_open()
         return self._registry.collect_garbage(
             manifest_generations=self.manifest().segment_generations
         )
 
     def lifecycle_diagnostics(self) -> LifecycleDiagnostics:
         return self._registry.diagnostics()
+
+    def close(self) -> LifecycleDiagnostics:
+        self._closed = True
+        return self.lifecycle_diagnostics()
+
+    def __enter__(self) -> Self:
+        self._ensure_open()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
