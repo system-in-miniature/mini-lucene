@@ -1,7 +1,7 @@
 import heapq
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 
 
@@ -11,6 +11,9 @@ class SearchHit:
     segment_generation: int
     local_doc_id: int
     stored_fields: Mapping[str, str]
+    highlights: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +39,7 @@ class TopKCollector:
         segment_generation: int,
         local_doc_id: int,
         stored_fields: Mapping[str, str] | None = None,
+        highlights: Mapping[str, str] | None = None,
     ) -> None:
         if not math.isfinite(score):
             raise ValueError("collected score must be finite")
@@ -47,6 +51,7 @@ class TopKCollector:
             segment_generation=segment_generation,
             local_doc_id=local_doc_id,
             stored_fields=MappingProxyType(dict(stored_fields or {})),
+            highlights=MappingProxyType(dict(highlights or {})),
         )
         key = (score, -segment_generation, -local_doc_id)
         item = (key, hit)

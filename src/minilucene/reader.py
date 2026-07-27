@@ -66,9 +66,35 @@ class IndexReader(ReaderView):
         if self._closed:
             raise AlreadyClosedError("reader is closed")
 
-    def search(self, query: Query, *, top_k: int = 10) -> TopDocs:
+    def search(
+        self,
+        query: Query,
+        *,
+        top_k: int = 10,
+        highlight_fields: tuple[str, ...] = (),
+    ) -> TopDocs:
         self._ensure_open()
-        return IndexSearcher(self).search(query, top_k=top_k)
+        return IndexSearcher(self).search(
+            query,
+            top_k=top_k,
+            highlight_fields=highlight_fields,
+        )
+
+    def search_text(
+        self,
+        source: str,
+        *,
+        default_field: str,
+        top_k: int = 10,
+        highlight_fields: tuple[str, ...] = (),
+    ) -> TopDocs:
+        self._ensure_open()
+        return IndexSearcher(self).search_text(
+            source,
+            default_field=default_field,
+            top_k=top_k,
+            highlight_fields=highlight_fields,
+        )
 
     def document(self, doc_id: int) -> Mapping[str, str]:
         self._ensure_open()
