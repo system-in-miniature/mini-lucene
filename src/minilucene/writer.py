@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
 
 from minilucene.errors import WriterAlreadyOpenError
 from minilucene.index.memory import RamIndexBuilder
+from minilucene.reader import IndexReader
 from minilucene.storage.image import SegmentImage
 from minilucene.storage.manifest import (
     Manifest,
@@ -102,6 +103,8 @@ class IndexWriter:
         if self.buffered_document_count == 0:
             return None
         generation = self._next_segment_generation
+        while self._segment_store.generation_exists(generation):
+            generation += 1
         image = SegmentImage.from_memory_segment(
             generation=generation,
             schema_fingerprint=self.index.schema.fingerprint,
@@ -109,9 +112,24 @@ class IndexWriter:
         )
         descriptor = self._segment_store.publish(image)
         self._segment_generations.append(generation)
-        self._next_segment_generation += 1
+        self._next_segment_generation = generation + 1
         self._buffer = RamIndexBuilder(self.index.schema)
         return descriptor
+
+    def refresh(self) -> IndexReader:
+        self._ensure_open()
+        self.flush()
+        segments = tuple(
+            self._segment_store.open(
+                generation, self.index.schema.fingerprint
+            )
+            for generation in self._segment_generations
+        )
+        return IndexReader(
+            self.index.schema,
+            segments,
+            commit_generation=None,
+        )
 
     def commit(self) -> Manifest:
         self._ensure_open()

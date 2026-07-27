@@ -44,6 +44,11 @@ class SegmentStore:
     def _directory_name(generation: int) -> str:
         return f"seg_{generation:06d}"
 
+    def generation_exists(self, generation: int) -> bool:
+        return self.fs.exists(
+            self.segments_path / self._directory_name(generation)
+        )
+
     def publish(self, image: SegmentImage) -> SegmentDescriptor:
         relative_path = Path("segments") / self._directory_name(
             image.generation
