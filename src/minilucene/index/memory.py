@@ -6,6 +6,7 @@ from minilucene.analysis import KeywordAnalyzer, StandardAnalyzer
 from minilucene.analysis.model import Token
 from minilucene.document import FrozenDocument, freeze_document
 from minilucene.index.postings import MemorySegment, Posting
+from minilucene.query.model import Query
 from minilucene.schema import FieldType, Schema
 
 
@@ -96,3 +97,20 @@ class RamIndexBuilder:
             stored_documents=tuple(self._stored_documents),
             field_lengths=field_lengths,
         )
+
+
+class MemoryIndex:
+    def __init__(self, schema: Schema) -> None:
+        self.schema = schema
+        self._builder = RamIndexBuilder(schema)
+
+    def add_document(self, **values: object) -> int:
+        return self._builder.add_document(values)
+
+    def search(self, query: Query, *, top_k: int = 10):
+        from minilucene.search.reader import ReaderView
+        from minilucene.search.searcher import IndexSearcher
+
+        segment = self._builder.freeze(generation=0)
+        reader = ReaderView(self.schema, (segment,))
+        return IndexSearcher(reader).search(query, top_k=top_k)
