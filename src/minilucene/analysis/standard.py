@@ -8,6 +8,7 @@ from minilucene.analysis.pipeline import (
 )
 
 _WORD_PATTERN = re.compile(r"\w+", re.UNICODE)
+_DEFAULT_STOPWORDS = frozenset({"the"})
 
 
 class StandardTokenizer:
@@ -31,7 +32,7 @@ class KeywordTokenizer:
 
 
 def StandardAnalyzer(
-    *, stopwords: frozenset[str] = frozenset()
+    *, stopwords: frozenset[str] = _DEFAULT_STOPWORDS
 ) -> Analyzer:
     return Analyzer(
         StandardTokenizer(),
