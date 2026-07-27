@@ -90,3 +90,22 @@ class Schema(Mapping[str, FieldType]):
 
     def __len__(self) -> int:
         return len(self._fields)
+
+    def to_dict(self) -> dict[str, dict[str, object]]:
+        return {
+            name: asdict(field) for name, field in self._fields.items()
+        }
+
+    @classmethod
+    def from_dict(
+        cls, fields: Mapping[str, Mapping[str, object]]
+    ) -> Schema:
+        try:
+            return cls(
+                **{
+                    name: FieldType(**dict(properties))
+                    for name, properties in fields.items()
+                }
+            )
+        except (TypeError, ValueError) as error:
+            raise SchemaError(f"invalid persisted schema: {error}") from error
