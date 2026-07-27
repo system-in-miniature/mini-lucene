@@ -3,6 +3,8 @@ from minilucene.index.memory import MemoryIndex
 from minilucene.reader import IndexReader
 from minilucene.schema import KeywordField, Schema, StoredField, TextField
 
+__version__ = "0.1.0"
+
 __all__ = [
     "Index",
     "IndexReader",
@@ -11,4 +13,5 @@ __all__ = [
     "Schema",
     "StoredField",
     "TextField",
+    "__version__",
 ]
