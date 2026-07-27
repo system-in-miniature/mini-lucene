@@ -242,7 +242,8 @@ fields.
 The closed V1 query union is:
 
 - `TermQuery(field, term)`;
-- `PhraseQuery(field, terms, slop=0)`;
+- `PhraseQuery(field, terms, positions=None, slop=0)`, where `None` means
+  consecutive normalized positions;
 - `PrefixQuery(field, prefix)`;
 - `BooleanQuery(clauses)`;
 - `MatchAllQuery()`.
@@ -257,9 +258,11 @@ Boolean semantics are fixed:
 - if there is a `MUST`, `SHOULD` is optional and contributes score;
 - a query containing only `MUST_NOT` matches nothing.
 
-Phrase queries require consecutive positions at `slop=0`. Stopword gaps remain
-visible, so phrase construction uses analyzed token positions rather than
-renumbering surviving terms.
+Phrase queries require their normalized query positions at `slop=0`. Stopword
+gaps remain visible, so phrase construction subtracts the first surviving
+token position but does not renumber later tokens. For example, analyzing
+`"distributed the system"` may produce positions `(0, 2)`, which does not
+match adjacent `"distributed system"`.
 
 Prefix queries expand against the sorted per-field term dictionary. Expansion
 has a configured hard cap and fails explicitly when exceeded; it never scans
