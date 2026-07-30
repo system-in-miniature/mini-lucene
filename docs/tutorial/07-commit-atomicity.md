@@ -78,7 +78,7 @@ fsync index directory
 
 The first fsync asks the operating system to make the temporary file's content
 durable before it becomes authoritative. `src/minilucene/storage/filesystem.py`,
-`FileSystemOps.replace()` uses `Path.replace()`, which maps to an atomic rename
+`FileSystemOps.replace()` uses `os.replace()`, which maps to an atomic rename
 on the expected same-filesystem setup. A reader opening the destination sees
 the old complete name or the new complete name, not half of the JSON.
 

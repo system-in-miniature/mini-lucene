@@ -15,7 +15,10 @@ delta encoding，说明四个文件的职责，追踪 SHA-256 与严格 framing 
 
 `src/minilucene/storage/varint.py` 实现 unsigned LEB128 风格整数。
 `encode_uvarint` 每字节放 7 个 payload bit，还有后续时设置高位；小于 128 的数
-只需一字节，128 是 `80 01`，300 是 `ac 02`。它强制 uint64 范围。
+只需一字节，128 是 `80 01`，300 是 `ac 02`。由于 Python 的 `bool` 是 `int`
+子类，当前类型与范围检查会接受布尔值：`False` 编码为 `00`，`True` 编码为
+`01`。这是 Python 实现特性，不是独立的 Boolean wire type；其他输入必须是
+uint64 范围内的整数。
 `decode_uvarint` 最多读十字节，返回 `(value, next_offset)`，拒绝未终止和溢出。
 
 `encode_delta_sequence` 保存严格递增 tuple 的首个绝对值和后续差值：
@@ -87,6 +90,7 @@ from minilucene.storage.codec import SegmentDataCodec
 for value in (1, 127, 128, 300):
     encoded = encode_uvarint(value)
     print(value, encoded.hex(), decode_uvarint(encoded, 0))
+print("bools", encode_uvarint(False).hex(), encode_uvarint(True).hex())
 print("deltas", encode_delta_sequence((3, 10, 11)).hex())
 try:
     SegmentDataCodec.decode(generation=1, schema_fingerprint="x",
@@ -103,6 +107,7 @@ PY
 127 7f (127, 1)
 128 8001 (128, 2)
 300 ac02 (300, 2)
+bools 00 01
 deltas 030701
 ValueError segment data requires exactly terms, postings, stored, and norms files
 ```
@@ -112,7 +117,7 @@ uv run --offline pytest -q tests/unit/storage/test_varint.py \
   tests/unit/storage/test_segment_codec.py tests/storage/test_segment_store.py
 ```
 
-实测：`27 passed in 0.31s`。
+实测：`27 passed in 0.28s`。
 
 ## 练习
 

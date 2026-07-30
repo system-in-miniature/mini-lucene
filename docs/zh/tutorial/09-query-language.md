@@ -112,7 +112,7 @@ prefix 必须恰好分析成一个 token。`title:KAF*` 变成规范化的
 `max_terms` 必须是正整数。如果填满上限后仍存在下一个匹配词项，
 `_expand_prefix()` 会抛出 `TooManyTermsError`，不会截断。截断会根据字典顺序静默改变查询含义。立即失败把成本和正确性暴露给调用者。
 
-`src/minilucene/reader.py` 的 `IndexReader.rewrite()` 提供默认上限 128。该上限限制展开大小，不限制展开后整个 MiniLucene 搜索成本；如第 8 章所述，匹配与打分仍物化完整集合。
+`src/minilucene/reader.py` 的 `IndexReader.rewrite()` 提供默认上限 1024。该上限限制展开大小，不限制展开后整个 MiniLucene 搜索成本；如第 8 章所述，匹配与打分仍物化完整集合。
 
 ## 6. 与 Apache Lucene 对照
 
@@ -193,7 +193,7 @@ UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run pytest tests/contract/test_prefix_r
 实测输出：
 
 ```text
-6 passed in 0.09s
+6 passed in 0.04s
 ```
 
 ## 8. 练习

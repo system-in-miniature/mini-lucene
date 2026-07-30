@@ -43,8 +43,9 @@ across explicit merge because merge copies exactly the same live corpus.
 
 ```text
 idf = log(1 + (n - df + 0.5) / (df + 0.5))
-normalization = 1 - b + b * dl / avgdl
-tf_weight = tf * (k1 + 1) / (tf + k1 * normalization)
+normalized_length = dl / avgdl if avgdl != 0 else 0
+norm = 1 - b + b * normalized_length
+tf_weight = tf * (k1 + 1) / (tf + k1 * norm)
 score = idf * tf_weight
 ```
 
@@ -54,8 +55,11 @@ IDF makes a rarer term more informative. The fraction in `tf_weight` grows
 when the term repeats, but its numerator and denominator both grow with `tf`,
 so the benefit saturates rather than remaining linear. Length normalization
 reduces the advantage a long document gets merely from having more places to
-contain a term. When `avgdl` is zero, the code uses normalization `1.0`, which
-keeps the formula defined for an empty statistical field.
+contain a term. When `avgdl` is zero, the code sets `normalized_length=0`, so
+`norm=1-b` (the default is `0.25`), rather than substituting a norm of `1.0`.
+For `n=df=tf=1`, `dl=avgdl=0`, and the defaults, this gives
+`score=0.486846584149`; using a norm of `1.0` would incorrectly give
+`0.287682072452`.
 
 `BM25.__post_init__()` rejects a negative/non-finite `k1` and a `b` outside
 `[0, 1]`. `term_score()` rejects invalid counts and lengths and returns zero
@@ -195,6 +199,7 @@ Run from the repository root:
 UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run python - <<'PY'
 from minilucene import MemoryIndex, Schema, TextField
 from minilucene.query import TermQuery
+from minilucene.search.bm25 import BM25
 
 schema = Schema(body=TextField(stored=True))
 index = MemoryIndex(schema)
@@ -214,6 +219,10 @@ print(
     f"count_only total={count_only.total_hits} "
     f"retained={len(count_only.hits)}"
 )
+print(
+    "zero_avgdl="
+    f"{BM25().term_score(tf=1, df=1, n=1, dl=0, avgdl=0):.12f}"
+)
 PY
 ```
 
@@ -225,6 +234,7 @@ retained=2
 'kafka kafka kafka kafka' score=0.570680
 'kafka' score=0.490428
 count_only total=3 retained=0
+zero_avgdl=0.486846584149
 ```
 
 Four repetitions score more than one, but not four times more. The longer
@@ -241,7 +251,7 @@ UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run pytest tests/unit/search/test_bm25.
 Measured output:
 
 ```text
-10 passed in 0.08s
+10 passed in 0.04s
 ```
 
 Elapsed time varies; the pass count and zero failures are the stable evidence.

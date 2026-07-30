@@ -22,8 +22,11 @@ By the end of this chapter, you can:
 `src/minilucene/storage/varint.py` implements unsigned LEB128-style integers.
 `encode_uvarint` emits seven payload bits per byte and sets the high continuation
 bit while more bits remain. Values below 128 need one byte; 128 becomes
-hexadecimal `80 01`; 300 becomes `ac 02`. The function rejects booleans by
-integer semantics only indirectly, but enforces the unsigned 64-bit range.
+hexadecimal `80 01`; 300 becomes `ac 02`. Because Python's `bool` is a subclass
+of `int`, the current type/range check accepts it: `False` encodes as `00` and
+`True` as `01`. This is a Python-specific consequence of the implementation,
+not a separate Boolean wire type. Other values must be integers in the
+unsigned 64-bit range.
 
 `decode_uvarint` reads at most ten bytes, reports the next offset, rejects an
 unterminated value, and rejects overflow in the tenth byte. Returning the next
@@ -167,6 +170,7 @@ from minilucene.storage.codec import SegmentDataCodec
 for value in (1, 127, 128, 300):
     encoded = encode_uvarint(value)
     print(value, encoded.hex(), decode_uvarint(encoded, 0))
+print("bools", encode_uvarint(False).hex(), encode_uvarint(True).hex())
 
 print("deltas", encode_delta_sequence((3, 10, 11)).hex())
 
@@ -188,6 +192,7 @@ Measured output:
 127 7f (127, 1)
 128 8001 (128, 2)
 300 ac02 (300, 2)
+bools 00 01
 deltas 030701
 ValueError segment data requires exactly terms, postings, stored, and norms files
 ```
@@ -207,7 +212,7 @@ uv run --offline pytest -q tests/unit/storage/test_varint.py \
 Measured result:
 
 ```text
-27 passed in 0.31s
+27 passed in 0.28s
 ```
 
 ## Exercises

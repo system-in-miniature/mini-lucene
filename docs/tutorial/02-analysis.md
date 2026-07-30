@@ -161,12 +161,16 @@ Run from the repository root:
 ```bash
 export UV_CACHE_DIR=/tmp/minilucene-uv-cache
 uv run --offline python - <<'PY'
-from minilucene.analysis import StandardAnalyzer
+from minilucene.analysis import StandardAnalyzer, Token
 from minilucene import MemoryIndex, Schema, TextField
 from minilucene.query import PhraseQuery
 
 tokens = StandardAnalyzer().analyze("Fast THE search")
 print([(t.term, t.position, t.start_offset, t.end_offset) for t in tokens])
+try:
+    Token("", 0, 0, 0)
+except ValueError as error:
+    print(type(error).__name__, str(error))
 
 index = MemoryIndex(Schema(body=TextField(stored=True)))
 index.add_document(body="fast the search")
@@ -180,6 +184,7 @@ Measured output:
 
 ```text
 [('fast', 0, 0, 4), ('search', 2, 9, 15)]
+ValueError term must be non-empty
 1 [{'body': 'fast search'}]
 ```
 
@@ -198,7 +203,7 @@ uv run --offline pytest -q tests/unit/analysis/test_pipeline.py \
 The repository's measured result is:
 
 ```text
-18 passed in 0.08s
+23 passed in 0.06s
 ```
 
 Timing is machine-dependent; the pass count is the acceptance signal.

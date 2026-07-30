@@ -57,7 +57,7 @@ fsync 索引目录
 
 第一次 fsync 要求操作系统在临时文件成为权威文件前，先持久化其内容。
 `src/minilucene/storage/filesystem.py` 的 `FileSystemOps.replace()` 使用
-`Path.replace()`；在预期的同一文件系统设置下，它对应原子 rename。打开目标文件的 reader 会看到旧的完整名字或新的完整名字，而不是半份 JSON。
+`os.replace()`；在预期的同一文件系统设置下，它对应原子 rename。打开目标文件的 reader 会看到旧的完整名字或新的完整名字，而不是半份 JSON。
 
 目录 fsync 的职责不同：它持久化目录项替换本身。只同步文件内容并不能在每种受支持文件系统上证明新名字绑定能经受掉电。
 

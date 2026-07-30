@@ -37,15 +37,18 @@
 
 ```text
 idf = log(1 + (n - df + 0.5) / (df + 0.5))
-normalization = 1 - b + b * dl / avgdl
-tf_weight = tf * (k1 + 1) / (tf + k1 * normalization)
+normalized_length = dl / avgdl if avgdl != 0 else 0
+norm = 1 - b + b * normalized_length
+tf_weight = tf * (k1 + 1) / (tf + k1 * norm)
 score = idf * tf_weight
 ```
 
 默认参数为 `k1=1.2`、`b=0.75`。
 
-IDF 让更稀有的词项信息量更高。`tf_weight` 的分数随词项重复而增长，但分子与分母都随 `tf` 增长，所以收益会饱和，而非线性增长。长度归一化削弱长文档仅仅因为容纳词项机会更多而获得的优势。当 `avgdl` 为零时，代码使用
-`1.0` 作为归一化值，使空统计字段仍有定义。
+IDF 让更稀有的词项信息量更高。`tf_weight` 的分数随词项重复而增长，但分子与分母都随 `tf` 增长，所以收益会饱和，而非线性增长。长度归一化削弱长文档仅仅因为容纳词项机会更多而获得的优势。当 `avgdl` 为零时，代码令
+`normalized_length=0`，所以 `norm=1-b`（默认值为 `0.25`），而不是把
+norm 替换成 `1.0`。在 `n=df=tf=1`、`dl=avgdl=0` 和默认参数下，分数是
+`0.486846584149`；若误用 norm `1.0`，才会得到 `0.287682072452`。
 
 `BM25.__post_init__()` 拒绝负数或非有限 `k1`，以及 `[0, 1]` 之外的
 `b`。`term_score()` 拒绝非法计数和长度；当 `tf == 0`、`df == 0`
@@ -136,6 +139,7 @@ BM25 概念可以迁移：词频饱和、逆文档频率、长度归一化和 si
 UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run python - <<'PY'
 from minilucene import MemoryIndex, Schema, TextField
 from minilucene.query import TermQuery
+from minilucene.search.bm25 import BM25
 
 schema = Schema(body=TextField(stored=True))
 index = MemoryIndex(schema)
@@ -155,6 +159,10 @@ print(
     f"count_only total={count_only.total_hits} "
     f"retained={len(count_only.hits)}"
 )
+print(
+    "zero_avgdl="
+    f"{BM25().term_score(tf=1, df=1, n=1, dl=0, avgdl=0):.12f}"
+)
 PY
 ```
 
@@ -166,6 +174,7 @@ retained=2
 'kafka kafka kafka kafka' score=0.570680
 'kafka' score=0.490428
 count_only total=3 retained=0
+zero_avgdl=0.486846584149
 ```
 
 重复四次的分数高于一次，但并非四倍。只出现一次的更长文档因长度归一化而落在 Top-2 之外。`top_k=0` 仍遍历并统计三个匹配。
@@ -179,7 +188,7 @@ UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run pytest tests/unit/search/test_bm25.
 实测输出：
 
 ```text
-10 passed in 0.08s
+10 passed in 0.04s
 ```
 
 耗时会变化；稳定证据是通过数量和零失败。

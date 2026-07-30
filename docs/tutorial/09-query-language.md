@@ -162,7 +162,7 @@ query meaning according to dictionary order. Fail-fast makes cost and
 correctness visible to the caller.
 
 `IndexReader.rewrite()` in `src/minilucene/reader.py` supplies a default limit
-of 128. The limit bounds expansion size, not the total cost of MiniLucene
+of 1024. The limit bounds expansion size, not the total cost of MiniLucene
 search after expansion: matching and scoring still materialize complete
 collections as described in Chapter 8.
 
@@ -258,7 +258,7 @@ UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run pytest tests/contract/test_prefix_r
 Measured output:
 
 ```text
-6 passed in 0.09s
+6 passed in 0.04s
 ```
 
 ## 8. Exercises

@@ -1,6 +1,26 @@
+import pytest
+
 from minilucene.analysis import KeywordAnalyzer, StandardAnalyzer, Token
 from minilucene.analysis.pipeline import Analyzer, LowercaseFilter
 from minilucene.analysis.standard import KeywordTokenizer
+
+
+@pytest.mark.parametrize(
+    ("token", "message"),
+    [
+        (("", 0, 0, 0), "term must be non-empty"),
+        (("term", -1, 0, 4), "position must be non-negative"),
+        (("term", 0, -1, 4), "offsets must be non-negative"),
+        (("term", 0, 0, -1), "offsets must be non-negative"),
+        (("term", 0, 4, 3), "end offset must not precede start offset"),
+    ],
+)
+def test_token_rejects_invalid_attributes(
+    token: tuple[str, int, int, int],
+    message: str,
+):
+    with pytest.raises(ValueError, match=message):
+        Token(*token)
 
 
 def test_standard_analysis_preserves_offsets_and_stopword_gap():
