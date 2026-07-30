@@ -2,6 +2,8 @@
 
 # MiniLucene
 
+[![CI](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml/badge.svg)](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
+
 MiniLucene is a direct-first Python reference implementation of the mechanisms
 that make lexical search work. It connects field schemas, analysis, positional
 inverted indexes, BM25, bounded Top-K collection, immutable disk segments,
@@ -194,3 +196,7 @@ Architecture and evidence:
 - [Phase 2: storage and commit](docs/phase2-storage-commit.md)
 - [Phase 3: NRT mutation and merge](docs/phase3-nrt-mutation.md)
 - [Executable behavior matrix](docs/behavior-matrix.md)
+
+## Trademark Notice
+
+MiniLucene is an independent educational project. It is not affiliated with, endorsed by, or sponsored by the Apache Software Foundation. "Apache Lucene" is a trademark of its respective owner.

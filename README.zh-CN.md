@@ -2,6 +2,8 @@
 
 # MiniLucene
 
+[![CI](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml/badge.svg)](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
+
 MiniLucene 是一个直接呈现机制的 Python 参考实现，用于说明词法搜索
 （lexical search）的工作原理。它在一个小型系统中串联了字段模式
 （field schema）、文本分析（analysis）、位置倒排索引（positional inverted
@@ -177,3 +179,7 @@ git diff --check
 - [阶段 2：存储与提交](docs/phase2-storage-commit.md)
 - [阶段 3：NRT 变更与合并](docs/phase3-nrt-mutation.md)
 - [可执行行为矩阵](docs/behavior-matrix.md)
+
+## 商标声明
+
+MiniLucene 是独立的教学项目，与 the Apache Software Foundation 无隶属、背书或赞助关系。"Apache Lucene" 商标归其所有者所有。
