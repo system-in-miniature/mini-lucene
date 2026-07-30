@@ -1,8 +1,8 @@
 site_name: MiniLucene Tutorial
 site_description: A chapter-oriented guide to lexical search mechanisms in miniature
-site_url: https://system-in-miniature.github.io/MiniLucene/
-repo_url: https://github.com/system-in-miniature/MiniLucene
-repo_name: system-in-miniature/MiniLucene
+site_url: https://system-in-miniature.github.io/mini-lucene/
+repo_url: https://github.com/system-in-miniature/mini-lucene
+repo_name: system-in-miniature/mini-lucene
 docs_dir: docs
 
 theme:

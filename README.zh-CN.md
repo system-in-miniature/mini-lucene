@@ -2,7 +2,7 @@
 
 # MiniLucene
 
-[![CI](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml/badge.svg)](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
+[![CI](https://github.com/system-in-miniature/mini-lucene/actions/workflows/ci.yml/badge.svg)](https://github.com/system-in-miniature/mini-lucene/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
 
 MiniLucene 是一个直接呈现机制的 Python 参考实现，用于说明词法搜索
 （lexical search）的工作原理。它在一个小型系统中串联了字段模式

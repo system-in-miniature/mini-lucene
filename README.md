@@ -2,7 +2,7 @@
 
 # MiniLucene
 
-[![CI](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml/badge.svg)](https://github.com/system-in-miniature/MiniLucene/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
+[![CI](https://github.com/system-in-miniature/mini-lucene/actions/workflows/ci.yml/badge.svg)](https://github.com/system-in-miniature/mini-lucene/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)
 
 MiniLucene is a direct-first Python reference implementation of the mechanisms
 that make lexical search work. It connects field schemas, analysis, positional
