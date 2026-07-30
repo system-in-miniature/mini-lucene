@@ -1,3 +1,5 @@
+"""Composable tokenizer/filter pipeline modeled after Lucene TokenStream."""
+
 from collections.abc import Iterable
 from dataclasses import replace
 from typing import Protocol
@@ -25,12 +27,17 @@ class StopwordFilter:
         self.stopwords = stopwords
 
     def apply(self, tokens: Iterable[Token]) -> tuple[Token, ...]:
+        # Filtering must not renumber surviving positions.  The resulting gap
+        # records that source text intervened, preventing an exact PhraseQuery
+        # from matching terms that only become adjacent after stopword removal.
         return tuple(
             token for token in tokens if token.term not in self.stopwords
         )
 
 
 class Analyzer:
+    """Run one tokenizer followed by ordered, attribute-preserving filters."""
+
     def __init__(
         self, tokenizer: Tokenizer, filters: tuple[TokenFilter, ...]
     ) -> None:

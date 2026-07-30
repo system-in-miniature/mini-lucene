@@ -1,3 +1,5 @@
+> **Language**: English | [简体中文](README.zh-CN.md)
+
 # MiniLucene
 
 MiniLucene is a direct-first Python reference implementation of the mechanisms
@@ -72,9 +74,12 @@ atomically published restart root
 
 query text → lexer → parser → Query AST → prefix rewrite
                                           ↓
-                          matching → global BM25 → Top-K
+                          matching → global BM25
                                           ↓
-                              stored fields + highlighting
+                         stored fields + highlighting
+                           for every matching document
+                                          ↓
+                                      Top-K heap
 ```
 
 `TextField` is tokenized and positional. `KeywordField` indexes the complete
@@ -87,8 +92,10 @@ separated in the original text. Highlighting re-analyzes stored `TextField`
 values, uses those offsets, and HTML-escapes all original text.
 
 BM25 statistics are global to one reader snapshot and include only live
-documents. Matching, scoring, and collecting are separate stages; the Top-K
-collector retains only K hits while still reporting the complete hit count.
+documents. The Top-K collector retains only K hit objects while still
+reporting the complete hit count. This is an in-memory bound, not an O(K)
+search pipeline: the current searcher reads stored fields and computes
+highlights for every match before collection.
 
 ## Flush, refresh, and commit
 
@@ -126,8 +133,43 @@ V1 deliberately excludes:
 - TCP, HTTP, RESP, or remote-client compatibility;
 - replication, heartbeats, elections, clustering, and sharding;
 - Apache Lucene codecs, FST/BlockTree, WAND, SIMD, or production tuning;
+- doc-at-a-time iterators (`PostingsEnum`, conjunction/disjunction scorers,
+  and two-phase iteration); matching and scoring materialize full sets/maps;
+- numeric/date fields, doc values, range queries, field sorting, aggregation,
+  and faceting;
 - vector fields, HNSW, hybrid retrieval, and automatic merge scheduling;
 - course chapters or lesson content.
+
+## Important differences from Apache Lucene
+
+Several boundaries are more than missing optimizations:
+
+- **Intentionally simplified:** Search is full-set algebra, not doc-at-a-time
+  iteration. `PostingsEnum`,
+  `ConjunctionScorer`, and related cursor/skip machinery do not exist.
+- **Semantics reversed:** Stored fields and highlights are produced for every
+  match before Top-K
+  collection. Lucene normally collects doc IDs/scores first and fetches only
+  the winning hits.
+- **Semantics reversed:** Phrase matches are scored as the sum of their terms'
+  BM25 scores, not from phrase frequency.
+- **Semantics reversed:** BM25 statistics exclude deleted documents
+  immediately. Lucene segment
+  statistics include them until merge, so MiniLucene does not demonstrate the
+  production phenomenon where merge can change scores.
+- **Semantics reversed:** Boost is fixed in the schema. Lucene 7.0 removed
+  index-time field boost and retains query-time boost, making the supported
+  direction the opposite.
+- **Intentionally simplified:** There are no numeric fields, doc values, or
+  range queries.
+- **Intentionally simplified:** A crashed process can leave `.writer.lock`
+  behind permanently; there is no stale-lock recovery or force-unlock API.
+- **Intentionally simplified:** Highlighting re-analyzes stored text, so an
+  indexed-but-not-stored field cannot be highlighted.
+
+See [MiniLucene → Apache Lucene mapping](docs/lucene-mapping.md) for the
+module-by-module **Equivalent / Intentionally simplified / Semantics
+reversed** table.
 
 The course will be designed separately after this reference project is
 accepted.
@@ -147,6 +189,7 @@ Architecture and evidence:
 - [Frozen design](docs/superpowers/specs/2026-07-27-minilucene-reference-project-design.md)
 - [Implementation plans](docs/superpowers/plans/2026-07-27-minilucene-reference-project.md)
 - [Segment format](docs/segment-format.md)
+- [MiniLucene → Apache Lucene mapping](docs/lucene-mapping.md)
 - [Phase 1: retrieval kernel](docs/phase1-retrieval-kernel.md)
 - [Phase 2: storage and commit](docs/phase2-storage-commit.md)
 - [Phase 3: NRT mutation and merge](docs/phase3-nrt-mutation.md)

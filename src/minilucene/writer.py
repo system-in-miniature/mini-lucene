@@ -1,3 +1,12 @@
+"""Single-writer indexing, NRT snapshots, and durable commit generations.
+
+The writer is the lifecycle coordinator: RAM documents become immutable
+segments, deletions become separately versioned live-doc masks, and only a
+manifest replacement makes that state recoverable after restart.  Unlike
+Lucene's IndexWriter, this teaching version has one RAM buffer and no DWPT,
+rollback, prepareCommit, automatic merge policy, or stale-lock recovery.
+"""
+
 import json
 import os
 from dataclasses import dataclass
@@ -46,6 +55,8 @@ class WriterState(StrEnum):
 
 
 class IndexWriter:
+    """Own one mutable indexing session and its process-local segment refs."""
+
     def __init__(
         self,
         index: "Index",
@@ -56,6 +67,10 @@ class IndexWriter:
         self.flush_policy = flush_policy or FlushPolicy()
         self._lock_path = Path(index.path) / ".writer.lock"
         self._state = WriterState.OPEN
+        # O_EXCL makes writer admission an atomic filesystem decision rather
+        # than a racy "exists then create" check.  The PID is diagnostic only:
+        # a crash strands this file because MiniLucene has no safe stale-lock
+        # validation or force-unlock API.
         try:
             descriptor = os.open(
                 self._lock_path,
@@ -152,9 +167,13 @@ class IndexWriter:
         return doc_id
 
     def flush(self) -> SegmentDescriptor | None:
+        """Freeze live RAM documents into a new, still-uncommitted segment."""
+
         self._ensure_open()
         if self.buffered_document_count == 0:
             return None
+        # Buffer deletions never need an on-disk live-doc generation: compact
+        # the live subset while doc IDs are still private to the RAM buffer.
         compacted = RamIndexBuilder(self.index.schema)
         for doc_id in sorted(self._buffer_live_docs):
             compacted.add_document(dict(self._buffer.documents[doc_id]))
@@ -183,7 +202,12 @@ class IndexWriter:
         return descriptor
 
     def refresh(self) -> IndexReader:
+        """Return a point-in-time reader without publishing a restart root."""
+
         self._ensure_open()
+        # Flushing first gives the new reader immutable inputs.  Older readers
+        # retain their own segment/mask tuple, so refresh never mutates a view
+        # that a caller may still be using.
         self.flush()
         segments = tuple(
             self._segment_store.open(
@@ -288,6 +312,8 @@ class IndexWriter:
     def merge(
         self, segment_generations: tuple[int, ...] | list[int]
     ) -> SegmentDescriptor:
+        """Replace selected generations in writer state with one live-only segment."""
+
         self._ensure_open()
         selected = tuple(segment_generations)
         if len(selected) < 2:
@@ -324,6 +350,8 @@ class IndexWriter:
         )
         descriptor = self._segment_store.publish(image)
 
+        # Keep the replacement at the earliest selected slot so global doc-ID
+        # order remains deterministic even when non-adjacent segments merge.
         insertion_index = min(
             self._segment_generations.index(item)
             for item in ordered_selected
@@ -359,8 +387,13 @@ class IndexWriter:
         return descriptor
 
     def commit(self) -> Manifest:
+        """Publish all current segments and deletion masks as one commit."""
+
         self._ensure_open()
         self.flush()
+        # Reopen every referenced segment before publishing the manifest.
+        # A commit root must fail closed rather than name bytes that cannot be
+        # fully validated with the current schema.
         for generation in self._segment_generations:
             self._segment_store.open(
                 generation, self.index.schema.fingerprint
@@ -376,6 +409,9 @@ class IndexWriter:
             metadata = pending_metadata[generation]
             if live_docs != frozenset(range(image.max_doc)):
                 if generation in self._dirty_live_docs:
+                    # A segment is immutable, so each changed deletion view is
+                    # a fresh live-doc generation.  Existing readers keep the
+                    # prior mask while this commit can name the new one.
                     live_generation = (
                         metadata[0] + 1 if metadata is not None else 1
                     )
@@ -410,6 +446,9 @@ class IndexWriter:
                     SegmentCommit(segment_generation=generation)
                 )
 
+        # Segment and live-doc files are durable before this point.  The
+        # atomic manifest replacement below is the sole publication boundary:
+        # a crash before it leaves only ignorable orphan generations.
         manifest = Manifest.next_from(
             current,
             segments=tuple(segment_commits),

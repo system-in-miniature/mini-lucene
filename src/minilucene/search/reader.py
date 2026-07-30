@@ -1,3 +1,11 @@
+"""Query-facing reader view over segments, postings, and corpus statistics.
+
+This is the low-level search adapter: it resolves global document IDs and
+offers matching/scoring primitives.  The distinct top-level
+``minilucene.reader.IndexReader`` adds public lifecycle, snapshot ownership,
+search convenience methods, and close semantics.
+"""
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 

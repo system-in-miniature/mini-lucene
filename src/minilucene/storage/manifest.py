@@ -1,3 +1,11 @@
+"""Validate and atomically publish the durable index commit root.
+
+Segment files may exist without being committed, but recovery follows only
+``manifest.json``.  Publishing uses temp-write, file fsync, atomic rename, and
+directory fsync so a restart observes either the previous complete manifest or
+the new complete manifest, never a partially written root.
+"""
+
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -33,6 +41,8 @@ class SegmentCommit:
 
 @dataclass(frozen=True, slots=True)
 class Manifest:
+    """A validated point-in-time list of committed segment generations."""
+
     format_version: int
     schema_fingerprint: str
     commit_generation: int
@@ -106,6 +116,8 @@ class Manifest:
 
 
 class ManifestStore:
+    """Persist the single restart-visible commit root."""
+
     def __init__(
         self, root: Path, *, fs: FileSystemOps | None = None
     ) -> None:
@@ -123,6 +135,8 @@ class ManifestStore:
         return manifest
 
     def write_atomic(self, manifest: Manifest) -> None:
+        """Durably replace the current manifest without exposing partial JSON."""
+
         data = json.dumps(
             {
                 "format_version": manifest.format_version,
@@ -139,6 +153,10 @@ class ManifestStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
+        # Durability needs both levels: fsync the temporary file before rename,
+        # then fsync the directory so the name replacement itself survives a
+        # crash.  The manifest is last because it makes earlier segment and
+        # live-doc files reachable during recovery.
         self.fs.write_bytes(self.temporary_path, data)
         self.fs.fsync_file(self.temporary_path)
         self.fs.replace(self.temporary_path, self.path)

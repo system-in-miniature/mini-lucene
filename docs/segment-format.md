@@ -1,3 +1,5 @@
+> **Language**: English | [简体中文](zh/segment-format.md)
+
 # MiniLucene V1 Segment Data Format
 
 MiniLucene segments are deterministic educational files. They are not Apache

@@ -1,3 +1,12 @@
+"""Strict educational encoding for one immutable segment's data files.
+
+The layout favors inspectable invariants over Lucene compatibility: terms
+name contiguous slices in one postings file, while stored documents and norms
+have explicit frame counts.  Decoders reject non-canonical ordering, gaps,
+overlap, truncation, and trailing bytes so corrupt input cannot be accepted as
+a plausible but different index.
+"""
+
 import json
 from collections.abc import Mapping
 
@@ -78,6 +87,8 @@ def _decode_posting_list(data: bytes) -> tuple[Posting, ...]:
             )
         )
         previous_doc_id = doc_id
+    # Consuming the frame exactly prevents a valid posting prefix from hiding
+    # appended garbage or a second ambiguous interpretation.
     if offset != len(data):
         raise ValueError("trailing bytes in posting list")
     return tuple(postings)
@@ -135,6 +146,9 @@ class SegmentDataCodec:
         schema_fingerprint: str,
         files: Mapping[str, bytes],
     ) -> SegmentImage:
+        # Fail closed on both missing and unknown files.  Silently ignoring an
+        # extra component could open bytes written by a newer/incompatible
+        # format under the wrong semantics.
         if set(files) != _DATA_FILES:
             raise ValueError(
                 "segment data requires exactly terms, postings, stored, "
@@ -168,6 +182,8 @@ class SegmentDataCodec:
         count, offset = decode_uvarint(data, 0)
         entries: list[tuple[str, str, int, int]] = []
         previous_key: tuple[str, str] | None = None
+        # Requiring a canonical, gap-free partition catches overlap, aliasing,
+        # reordered slices, and unreferenced bytes before postings are decoded.
         expected_postings_offset = 0
         for _ in range(count):
             field, offset = _decode_text(
@@ -209,6 +225,8 @@ class SegmentDataCodec:
                 data[offset:end]
             )
             expected_end = end
+        # Every postings byte must be owned by exactly one sorted term entry;
+        # otherwise corruption could remain invisible to query results.
         if expected_end != len(data):
             raise ValueError("trailing bytes in postings file")
         return postings

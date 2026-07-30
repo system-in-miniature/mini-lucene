@@ -1,3 +1,11 @@
+"""Public point-in-time IndexReader with lifecycle and search conveniences.
+
+The similarly named ``minilucene.search.reader.ReaderView`` is the internal
+query-facing base that resolves postings and document addresses.  This module
+wraps that view with snapshot metadata, segment ownership, closed-state checks,
+and the user-visible search API.
+"""
+
 from collections.abc import Mapping
 from typing import Self
 

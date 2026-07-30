@@ -1,3 +1,5 @@
+"""Standard and keyword analyzer factories with positional token output."""
+
 import re
 
 from minilucene.analysis.model import Token
@@ -13,6 +15,8 @@ _DEFAULT_STOPWORDS = frozenset({"the"})
 
 class StandardTokenizer:
     def tokenize(self, text: str) -> tuple[Token, ...]:
+        # Positions are assigned before filtering.  Keeping this original
+        # coordinate system is what lets later stopword removal preserve gaps.
         return tuple(
             Token(
                 term=match.group(),
