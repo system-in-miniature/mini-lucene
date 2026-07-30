@@ -34,6 +34,16 @@ def test_lexer_recognizes_grouping_unary_and_case_insensitive_operators():
     ]
 
 
+def test_lexer_keeps_internal_hyphen_in_word():
+    tokens = lex("id:doc-1")
+    assert [(token.kind, token.text) for token in tokens] == [
+        (TokenKind.WORD, "id"),
+        (TokenKind.COLON, ":"),
+        (TokenKind.WORD, "doc-1"),
+        (TokenKind.EOF, ""),
+    ]
+
+
 def test_lexer_decodes_only_quote_and_backslash_escapes_in_phrases():
     tokens = lex(r'"a \"quote\" and \\ path"')
     assert tokens[0].kind is TokenKind.PHRASE

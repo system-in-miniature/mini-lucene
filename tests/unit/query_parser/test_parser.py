@@ -1,6 +1,6 @@
 import pytest
 
-from minilucene import Schema, StoredField, TextField
+from minilucene import KeywordField, Schema, StoredField, TextField
 from minilucene.query import (
     BooleanClause,
     BooleanQuery,
@@ -15,6 +15,7 @@ from minilucene.query_parser import QuerySyntaxError, parse_query
 @pytest.fixture
 def schema():
     return Schema(
+        id=KeywordField(stored=True),
         title=TextField(stored=True),
         body=TextField(stored=True),
         raw=StoredField(),
@@ -43,6 +44,12 @@ def test_fielded_phrase_is_analyzed_with_positions(schema):
         'body:"distributed the system"', schema, "body"
     ) == PhraseQuery(
         "body", ("distributed", "system"), positions=(0, 2)
+    )
+
+
+def test_single_token_phrase_is_a_term_query(schema):
+    assert parse_query('id:"doc-1"', schema, "body") == TermQuery(
+        "id", "doc-1"
     )
 
 
@@ -82,6 +89,12 @@ def test_parentheses_unary_and_implicit_or(schema):
 def test_only_negative_query_remains_explicit(schema):
     assert parse_query("NOT kafka", schema, "body") == BooleanQuery(
         (BooleanClause(Occur.MUST_NOT, TermQuery("body", "kafka")),)
+    )
+
+
+def test_leading_minus_remains_not(schema):
+    assert parse_query("-term", schema, "body") == BooleanQuery(
+        (BooleanClause(Occur.MUST_NOT, TermQuery("body", "term")),)
     )
 
 

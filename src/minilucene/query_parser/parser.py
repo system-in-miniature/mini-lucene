@@ -196,6 +196,8 @@ class _Parser:
         if token.kind is TokenKind.PHRASE:
             self.advance()
             tokens = self._analyze(field, token.text, token)
+            if len(tokens) == 1:
+                return _Parsed(TermQuery(field, tokens[0].term))
             first_position = tokens[0].position
             return _Parsed(
                 PhraseQuery(

@@ -75,13 +75,23 @@ def _lex_phrase(source: str, start: int) -> tuple[LexToken, int]:
     raise QuerySyntaxError("unclosed phrase", start, source)
 
 
+def _is_internal_hyphen(source: str, index: int) -> bool:
+    return (
+        index > 0
+        and index + 1 < len(source)
+        and source[index - 1].isalnum()
+        and source[index + 1].isalnum()
+    )
+
+
 def _lex_word(source: str, start: int) -> tuple[LexToken, int]:
     index = start
-    while (
-        index < len(source)
-        and not source[index].isspace()
-        and source[index] not in ':()-"'
-    ):
+    while index < len(source):
+        character = source[index]
+        if character.isspace() or character in ':()"':
+            break
+        if character == "-" and not _is_internal_hyphen(source, index):
+            break
         index += 1
     text = source[start:index]
     star = text.find("*")

@@ -1,3 +1,5 @@
+import pytest
+
 from minilucene import KeywordField, MemoryIndex, Schema, TextField
 from minilucene.query import (
     BooleanClause,
@@ -6,6 +8,7 @@ from minilucene.query import (
     PhraseQuery,
     TermQuery,
 )
+from minilucene.query_parser import parse_query
 
 
 def test_fielded_phrase_bm25_topk_and_stored_fields_close_one_loop():
@@ -41,3 +44,18 @@ def test_fielded_phrase_bm25_topk_and_stored_fields_close_one_loop():
     assert result.total_hits == 1
     assert result.hits[0].stored_fields["id"] == "1"
     assert result.hits[0].score > 0
+
+
+@pytest.mark.parametrize("source", ['id:"doc-1"', "id:doc-1"])
+def test_hyphenated_keyword_id_is_searchable_from_query_string(source):
+    schema = Schema(
+        id=KeywordField(stored=True),
+        body=TextField(stored=True),
+    )
+    index = MemoryIndex(schema)
+    index.add_document(id="doc-1", body="searchable")
+
+    result = index.search(parse_query(source, schema, "body"))
+
+    assert result.total_hits == 1
+    assert result.hits[0].stored_fields["id"] == "doc-1"
