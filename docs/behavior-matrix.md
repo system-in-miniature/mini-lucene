@@ -1,5 +1,7 @@
 # MiniLucene V1 Executable Behavior Matrix
 
+> **Language**: English | [简体中文](zh/behavior-matrix.md)
+
 Every supported behavior and explicit non-goal below is bound to one stable
 pytest node. The public API column names the boundary a user touches; it does
 not claim Apache Lucene API or file-format compatibility.

@@ -1,5 +1,7 @@
 # MiniLucene V1 Final Acceptance
 
+> **Language**: English | [简体中文](zh/final-acceptance.md)
+
 Accepted on 2026-07-27 in:
 
 ```text

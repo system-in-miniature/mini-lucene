@@ -1,5 +1,7 @@
 # Phase 2: Immutable Storage and Commit Acceptance
 
+> **Language**: English | [简体中文](zh/phase2-storage-commit.md)
+
 ## Accepted persistence loop
 
 ```text

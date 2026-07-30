@@ -1,5 +1,7 @@
 # Phase 3: NRT Mutation and Merge Acceptance
 
+> **Language**: English | [简体中文](zh/phase3-nrt-mutation.md)
+
 ## Accepted visibility model
 
 MiniLucene now has three executable and distinct boundaries:

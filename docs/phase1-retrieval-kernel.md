@@ -1,5 +1,7 @@
 # Phase 1: Retrieval Kernel Acceptance
 
+> **Language**: English | [简体中文](zh/phase1-retrieval-kernel.md)
+
 ## Accepted public loop
 
 The in-memory reference path is:
