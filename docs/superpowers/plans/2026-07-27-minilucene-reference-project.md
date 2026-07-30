@@ -1,8 +1,6 @@
-# MiniLucene Reference Project Implementation Plan
+# MiniLucene Reference Project Design and Implementation History
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans inline to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** Build and accept a Direct-first Python lexical search engine that connects field analysis, positional postings, BM25, immutable segments, NRT readers, mutation, merge, parsing, highlighting, and evaluation.
+**Historical objective:** Build and accept a Direct-first Python lexical search engine that connects field analysis, positional postings, BM25, immutable segments, NRT readers, mutation, merge, parsing, highlighting, and evaluation.
 
 **Architecture:** The project is split into four dependency-ordered phases. Each phase produces working software, ends with the complete suite green, and makes one acceptance commit; later phases may consume only stable public contracts frozen by earlier phases.
 
@@ -16,7 +14,7 @@
 
 ## Plan set
 
-Execute in order:
+The recorded phase order was:
 
 1. [Retrieval Kernel](./2026-07-27-minilucene-retrieval-kernel.md)
 2. [Immutable Storage and Commit](./2026-07-27-minilucene-storage-commit.md)
@@ -32,15 +30,6 @@ Phase 3: reader snapshots + refresh + live docs + update + merge
    ↓
 Phase 4: parser + highlighting + evaluation + CLI + final acceptance
 ```
-
-## Repository and workflow
-
-- Repository root: `~/MiniLucene-workspace/MiniLucene`
-- Branch: `main`
-- Execution style: inline only; do not dispatch subagents.
-- Use TDD for every behavior change.
-- Make one focused local commit per task.
-- Do not create a remote, push, PR, deployment, or course repository.
 
 ## Cross-phase invariants
 
@@ -59,25 +48,16 @@ Phase 4: parser + highlighting + evaluation + CLI + final acceptance
 - TCP, HTTP, distributed coordination, vector retrieval, and course material
   remain outside V1.
 
-## Phase acceptance protocol
+## Historical acceptance evidence
 
 At the end of each phase:
 
-```bash
-cd ~/MiniLucene-workspace/MiniLucene
-uv sync --dev
-uv run ruff check src tests tools
-uv run pytest -q
-uv run python -m compileall -q src tests tools
-git diff --check
-git status --short
-git log -1 --oneline
-```
+Historical verification covered targeted or full test coverage, static analysis, bytecode compilation, diff hygiene, repository-state inspection.
 
-No skipped or xfailed core test may be used to claim completion. The worktree
-must be clean after the phase acceptance commit.
+The acceptance record excluded skipped or xfailed core tests and required a
+clean worktree after the phase acceptance commit.
 
-## Final stop condition
+## Recorded scope boundary
 
-Stop after Phase 4 accepts the reference project. Do not create `course/`,
+The recorded scope ended after Phase 4 acceptance and excluded `course/`,
 chapter files, review quizzes, a vector index, or another repository.

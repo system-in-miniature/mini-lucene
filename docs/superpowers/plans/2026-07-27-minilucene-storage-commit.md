@@ -1,8 +1,6 @@
-# MiniLucene Immutable Storage and Commit Implementation Plan
+# MiniLucene Immutable Storage and Commit Design and Implementation History
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans. Execute inline and complete tasks in order.
-
-**Goal:** Persist Phase 1 segments with deterministic codecs, publish commits atomically through one manifest, and reopen committed indexes with search results equivalent to the in-memory oracle.
+**Historical objective:** Persist Phase 1 segments with deterministic codecs, publish commits atomically through one manifest, and reopen committed indexes with search results equivalent to the in-memory oracle.
 
 **Architecture:** A frozen `SegmentImage` crosses the RAM/disk boundary. `SegmentCodec` writes immutable, checksummed segment directories. `ManifestStore` is the only recoverable root. `IndexWriter` owns the RAM buffer and generation counters; `Index.open_reader()` consumes only the committed manifest.
 
@@ -10,14 +8,14 @@
 
 ---
 
-### Task 1: Freeze `SegmentImage` as the storage boundary
+### Milestone 1: Freeze `SegmentImage` as the storage boundary
 
-**Files:**
-- Create: `src/minilucene/storage/__init__.py`
-- Create: `src/minilucene/storage/image.py`
-- Create: `tests/unit/storage/test_segment_image.py`
+**Recorded file scope:**
+- Added: `src/minilucene/storage/__init__.py`
+- Added: `src/minilucene/storage/image.py`
+- Added: `tests/unit/storage/test_segment_image.py`
 
-- [x] **Step 1: Write the failing invariant tests**
+**Recorded activity 1 — Test intent: the failing invariant tests**
 
 ```python
 import pytest
@@ -42,17 +40,15 @@ def test_segment_image_is_immutable(ram_segment):
         image.stored_documents[0] = {"id": "changed"}
 ```
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/unit/storage/test_segment_image.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/storage/test_segment_image.py`.
 
-Expected: import failure because `storage.image` does not exist.
+Historical expected evidence: import failure because `storage.image` does not exist.
 
-- [x] **Step 3: Implement the frozen image**
+**Recorded activity 3 — Design outcome: the frozen image**
 
-Use immutable tuples and `MappingProxyType`. Validate generation is positive,
+The design used immutable tuples and `MappingProxyType`. Validate generation is positive,
 document IDs are exactly `range(max_doc)`, posting doc IDs are increasing and
 in range, positions are increasing, and every field-length vector has
 `max_doc` entries.
@@ -77,26 +73,17 @@ class SegmentImage:
     ) -> "SegmentImage": ...
 ```
 
-- [x] **Step 4: Run GREEN and regression**
+**Recorded activity 4 — Verification intent: GREEN and regression**
 
-```bash
-uv run pytest tests/unit/storage/test_segment_image.py tests/unit/index -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/storage/test_segment_image.py`, `tests/unit/index`.
 
-- [x] **Step 5: Commit**
+### Milestone 2: Implement unsigned varints and delta sequences
 
-```bash
-git add src/minilucene/storage tests/unit/storage/test_segment_image.py
-git commit -m "feat: freeze immutable segment images"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/storage/varint.py`
+- Added: `tests/unit/storage/test_varint.py`
 
-### Task 2: Implement unsigned varints and delta sequences
-
-**Files:**
-- Create: `src/minilucene/storage/varint.py`
-- Create: `tests/unit/storage/test_varint.py`
-
-- [x] **Step 1: Write table and malformed-input tests**
+**Recorded activity 1 — Test intent: table and malformed-input tests**
 
 ```python
 import pytest
@@ -125,39 +112,28 @@ def test_unterminated_varint_is_rejected():
         decode_uvarint(b"\x80", 0)
 ```
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/unit/storage/test_varint.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/storage/test_varint.py`.
 
-- [x] **Step 3: Implement bounded decoding**
+**Recorded activity 3 — Design outcome: bounded decoding**
 
 `decode_uvarint` accepts at most ten bytes and rejects overflow, negative
 offsets, out-of-bounds offsets, and unterminated input. Delta decoding accepts
 an explicit element count and rejects zero deltas after the first element.
 
-- [x] **Step 4: Run GREEN**
+**Recorded activity 4 — Verification intent: GREEN**
 
-```bash
-uv run pytest tests/unit/storage/test_varint.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/storage/test_varint.py`.
 
-- [x] **Step 5: Commit**
+### Milestone 3: Encode terms, postings, stored fields, and norms
 
-```bash
-git add src/minilucene/storage/varint.py tests/unit/storage/test_varint.py
-git commit -m "feat: add bounded varint codecs"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/storage/codec.py`
+- Added: `tests/unit/storage/test_segment_codec.py`
+- Added: `docs/segment-format.md`
 
-### Task 3: Encode terms, postings, stored fields, and norms
-
-**Files:**
-- Create: `src/minilucene/storage/codec.py`
-- Create: `tests/unit/storage/test_segment_codec.py`
-- Create: `docs/segment-format.md`
-
-- [x] **Step 1: Write byte-stability and round-trip tests**
+**Recorded activity 1 — Test intent: byte-stability and round-trip tests**
 
 ```python
 from minilucene.storage.codec import SegmentDataCodec
@@ -185,17 +161,15 @@ def test_segment_data_codec_round_trips(segment_image):
     assert decoded == segment_image
 ```
 
-Add corruption cases for invalid UTF-8, offsets outside `postings.bin`,
+The recorded scope added corruption cases for invalid UTF-8, offsets outside `postings.bin`,
 non-monotonic doc IDs, non-monotonic positions, malformed JSON frames, trailing
 bytes, and field-length count mismatches.
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/unit/storage/test_segment_codec.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/storage/test_segment_codec.py`.
 
-- [x] **Step 3: Implement the documented codec**
+**Recorded activity 3 — Design outcome: the documented codec**
 
 Encoding contracts:
 
@@ -221,33 +195,23 @@ Every integer and byte-string length uses unsigned varints. Terms sort by
 `(field UTF-8 bytes, term UTF-8 bytes)`. JSON uses
 `sort_keys=True, ensure_ascii=False, separators=(",", ":")`.
 
-- [x] **Step 4: Document the exact format**
+**Recorded activity 4 — Document the exact format**
 
 `docs/segment-format.md` records magic/version ownership, every frame, sorting
 rules, validation rules, and that compatibility with Apache Lucene is absent.
 
-- [x] **Step 5: Run GREEN and deterministic check**
+**Recorded activity 5 — Verification intent: GREEN and deterministic check**
 
-```bash
-uv run pytest tests/unit/storage/test_segment_codec.py -q
-uv run ruff check src/minilucene/storage tests/unit/storage
-```
+Historical verification covered targeted or full test coverage, static analysis, including `tests/unit/storage/test_segment_codec.py`, `src/minilucene/storage`, `tests/unit/storage`.
 
-- [x] **Step 6: Commit**
+### Milestone 4: Publish checksummed immutable segment directories
 
-```bash
-git add src/minilucene/storage/codec.py tests/unit/storage/test_segment_codec.py docs/segment-format.md
-git commit -m "feat: encode educational segment data"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/storage/filesystem.py`
+- Added: `src/minilucene/storage/segment_store.py`
+- Added: `tests/storage/test_segment_store.py`
 
-### Task 4: Publish checksummed immutable segment directories
-
-**Files:**
-- Create: `src/minilucene/storage/filesystem.py`
-- Create: `src/minilucene/storage/segment_store.py`
-- Create: `tests/storage/test_segment_store.py`
-
-- [x] **Step 1: Write publication and cleanup tests**
+**Recorded activity 1 — Test intent: publication and cleanup tests**
 
 ```python
 from pathlib import Path
@@ -274,13 +238,11 @@ def test_failed_publish_never_creates_final_directory(
     assert not (tmp_path / "segments" / "seg_000001").exists()
 ```
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/storage/test_segment_store.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_segment_store.py`.
 
-- [x] **Step 3: Implement injected filesystem operations**
+**Recorded activity 3 — Design outcome: injected filesystem operations**
 
 `FileSystemOps` wraps mkdir, write, fsync-file, fsync-directory, replace, read,
 remove-tree, and list-directory. `SegmentStore.publish` uses a UUID temp
@@ -288,33 +250,24 @@ directory, writes four data files, fsyncs them, writes `segment.json` last with
 magic/version/generation/schema fingerprint/length/SHA-256 entries, fsyncs,
 renames atomically, and fsyncs `segments/`.
 
-- [x] **Step 4: Implement strict open**
+**Recorded activity 4 — Design outcome: strict open**
 
 `SegmentStore.open(generation, expected_schema_fingerprint)` validates metadata
 before decoding. Unknown version, wrong schema, missing file, wrong length,
 wrong checksum, or invalid codec data raises `CorruptIndexError` without
 returning a partial image.
 
-- [x] **Step 5: Run GREEN**
+**Recorded activity 5 — Verification intent: GREEN**
 
-```bash
-uv run pytest tests/storage/test_segment_store.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_segment_store.py`.
 
-- [x] **Step 6: Commit**
+### Milestone 5: Make the manifest the only committed root
 
-```bash
-git add src/minilucene/storage/filesystem.py src/minilucene/storage/segment_store.py tests/storage/test_segment_store.py
-git commit -m "feat: publish checksummed immutable segments"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/storage/manifest.py`
+- Added: `tests/storage/test_manifest_store.py`
 
-### Task 5: Make the manifest the only committed root
-
-**Files:**
-- Create: `src/minilucene/storage/manifest.py`
-- Create: `tests/storage/test_manifest_store.py`
-
-- [x] **Step 1: Write atomic-root tests**
+**Recorded activity 1 — Test intent: atomic-root tests**
 
 ```python
 import pytest
@@ -339,13 +292,11 @@ def test_replace_failure_preserves_old_manifest(tmp_path, failing_fs):
     assert store.read() == old
 ```
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/storage/test_manifest_store.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_manifest_store.py`.
 
-- [x] **Step 3: Implement immutable manifest values**
+**Recorded activity 3 — Design outcome: immutable manifest values**
 
 Manifest fields:
 
@@ -367,34 +318,25 @@ class Manifest:
     next_commit_generation: int
 ```
 
-Create writes persisted schema plus generation-zero manifest. Update writes
+The recorded scope added writes persisted schema plus generation-zero manifest. Update writes
 canonical JSON to `manifest.tmp`, fsyncs, replaces `manifest.json`, and fsyncs
 the index directory. Startup removes neither orphans nor temp files; it ignores
 anything not referenced by the manifest.
 
-- [x] **Step 4: Run GREEN**
+**Recorded activity 4 — Verification intent: GREEN**
 
-```bash
-uv run pytest tests/storage/test_manifest_store.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_manifest_store.py`.
 
-- [x] **Step 5: Commit**
+### Milestone 6: Add index creation, schema persistence, and writer exclusion
 
-```bash
-git add src/minilucene/storage/manifest.py tests/storage/test_manifest_store.py
-git commit -m "feat: make manifest the committed index root"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/index.py`
+- Added: `src/minilucene/writer.py`
+- Added: `src/minilucene/errors.py`
+- Changed: `src/minilucene/__init__.py`
+- Added: `tests/contract/test_index_lifecycle.py`
 
-### Task 6: Add index creation, schema persistence, and writer exclusion
-
-**Files:**
-- Create: `src/minilucene/index.py`
-- Create: `src/minilucene/writer.py`
-- Create: `src/minilucene/errors.py`
-- Modify: `src/minilucene/__init__.py`
-- Create: `tests/contract/test_index_lifecycle.py`
-
-- [x] **Step 1: Write public lifecycle tests**
+**Recorded activity 1 — Test intent: public lifecycle tests**
 
 ```python
 import pytest
@@ -424,39 +366,28 @@ def test_only_one_writer_can_be_open(tmp_path, schema):
     index.writer().close()
 ```
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/contract/test_index_lifecycle.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/contract/test_index_lifecycle.py`.
 
-- [x] **Step 3: Implement lifecycle ownership**
+**Recorded activity 3 — Design outcome: lifecycle ownership**
 
 `Index.create` refuses non-empty initialized paths, persists schema, and writes
 manifest zero. `Index.open` validates schema fingerprint. `Index.writer`
 creates an exclusive `.writer.lock` with `O_CREAT | O_EXCL`; `close()` releases
 it idempotently. Stale-lock recovery is explicit and outside V1.
 
-- [x] **Step 4: Run GREEN**
+**Recorded activity 4 — Verification intent: GREEN**
 
-```bash
-uv run pytest tests/contract/test_index_lifecycle.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/contract/test_index_lifecycle.py`.
 
-- [x] **Step 5: Commit**
+### Milestone 7: Implement deterministic flush without publication
 
-```bash
-git add src/minilucene/index.py src/minilucene/writer.py src/minilucene/errors.py src/minilucene/__init__.py tests/contract/test_index_lifecycle.py
-git commit -m "feat: own index and writer lifecycle"
-```
+**Recorded file scope:**
+- Changed: `src/minilucene/writer.py`
+- Added: `tests/storage/test_writer_flush.py`
 
-### Task 7: Implement deterministic flush without publication
-
-**Files:**
-- Modify: `src/minilucene/writer.py`
-- Create: `tests/storage/test_writer_flush.py`
-
-- [x] **Step 1: Write visibility and threshold tests**
+**Recorded activity 1 — Test intent: visibility and threshold tests**
 
 ```python
 def test_flush_creates_segment_but_does_not_change_manifest(index):
@@ -475,13 +406,11 @@ def test_document_threshold_flushes_before_next_add(index_with_threshold_one):
         assert writer.buffered_document_count == 1
 ```
 
-- [x] **Step 2: Run RED**
+**Recorded activity 2 — Verification intent: RED**
 
-```bash
-uv run pytest tests/storage/test_writer_flush.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_writer_flush.py`.
 
-- [x] **Step 3: Implement flush**
+**Recorded activity 3 — Design outcome: flush**
 
 Before each add, validate and analyze the complete document into a temporary
 prepared document. Mutate the RAM buffer only after preparation succeeds.
@@ -492,29 +421,20 @@ buffer only after publication succeeds. Empty flush returns `None`.
 Automatic flush uses `FlushPolicy(max_documents, max_postings)` and checks the
 logical counts before admitting the next document.
 
-- [x] **Step 4: Run GREEN**
+**Recorded activity 4 — Verification intent: GREEN**
 
-```bash
-uv run pytest tests/storage/test_writer_flush.py tests/contract/test_memory_search.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_writer_flush.py`, `tests/contract/test_memory_search.py`.
 
-- [x] **Step 5: Commit**
+### Milestone 8: Commit and reopen equivalent disk search
 
-```bash
-git add src/minilucene/writer.py tests/storage/test_writer_flush.py
-git commit -m "feat: flush writer buffers to immutable segments"
-```
+**Recorded file scope:**
+- Changed: `src/minilucene/writer.py`
+- Changed: `src/minilucene/index.py`
+- Added: `src/minilucene/reader.py`
+- Added: `tests/storage/test_commit_recovery.py`
+- Added: `tests/contract/test_disk_search.py`
 
-### Task 8: Commit and reopen equivalent disk search
-
-**Files:**
-- Modify: `src/minilucene/writer.py`
-- Modify: `src/minilucene/index.py`
-- Create: `src/minilucene/reader.py`
-- Create: `tests/storage/test_commit_recovery.py`
-- Create: `tests/contract/test_disk_search.py`
-
-- [x] **Step 1: Write old-or-new crash tests**
+**Recorded activity 1 — Test intent: old-or-new crash tests**
 
 Inject failures at: segment data write, segment metadata write, segment rename,
 manifest temp write, and manifest replace. For each failure reopen the index
@@ -529,84 +449,56 @@ def test_complete_segment_without_manifest_is_ignored_after_reopen(index):
     assert reopened.open_reader().max_doc == 0
 ```
 
-- [x] **Step 2: Write equivalence contract**
+**Recorded activity 2 — Test intent: equivalence contract**
 
 Build the same corpus in `MemoryIndex` and disk `Index`, commit, reopen, search
 term/phrase/prefix/boolean queries, and compare total hits, stored fields,
 scores with `pytest.approx`, and final order.
 
-- [x] **Step 3: Run RED**
+**Recorded activity 3 — Verification intent: RED**
 
-```bash
-uv run pytest tests/storage/test_commit_recovery.py tests/contract/test_disk_search.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/storage/test_commit_recovery.py`, `tests/contract/test_disk_search.py`.
 
-- [x] **Step 4: Implement commit**
+**Recorded activity 4 — Design outcome: commit**
 
 Commit flushes, verifies all referenced segments, creates the next immutable
 manifest, publishes it atomically, then updates writer committed state. A
 failed manifest publication leaves the prior committed manifest authoritative
 and keeps the writer open for explicit retry or close.
 
-- [x] **Step 5: Implement committed reader**
+**Recorded activity 5 — Design outcome: committed reader**
 
 `Index.open_reader()` loads exactly the manifest's segments, constructs one
 multi-segment reader view, computes global corpus statistics, and searches
 through the Phase 1 scorer/collector path. It never scans unreferenced
 directories.
 
-- [x] **Step 6: Run GREEN and phase verification**
+**Recorded activity 6 — Verification intent: GREEN and phase verification**
 
-```bash
-uv run pytest tests/storage/test_commit_recovery.py tests/contract/test_disk_search.py -q
-uv run ruff check src tests tools
-uv run pytest -q
-uv run python -m compileall -q src tests tools
-git diff --check
-```
+Historical verification covered targeted or full test coverage, static analysis, bytecode compilation, diff hygiene, including `tests/storage/test_commit_recovery.py`, `tests/contract/test_disk_search.py`.
 
-- [x] **Step 7: Commit**
+### Milestone 9: Accept immutable storage and commit
 
-```bash
-git add src/minilucene/writer.py src/minilucene/index.py src/minilucene/reader.py tests/storage/test_commit_recovery.py tests/contract/test_disk_search.py
-git commit -m "feat: atomically commit and reopen indexes"
-```
+**Recorded file scope:**
+- Added: `tests/acceptance/test_phase2_storage_commit.py`
+- Added: `docs/phase2-storage-commit.md`
 
-### Task 9: Accept immutable storage and commit
+**Recorded activity 1 — Design outcome: one restart acceptance**
 
-**Files:**
-- Create: `tests/acceptance/test_phase2_storage_commit.py`
-- Create: `docs/phase2-storage-commit.md`
-
-- [x] **Step 1: Add one restart acceptance**
-
-Create two segments, commit, reopen through a fresh `Index`, and prove stored
+The recorded scope added two segments, commit, reopen through a fresh `Index`, and prove stored
 fields, phrase hits, BM25 scores, schema fingerprint, generation ordering, and
 absence of orphan visibility match the in-memory oracle.
 
-- [x] **Step 2: Run phase acceptance**
+**Recorded activity 2 — Verification intent: phase acceptance**
 
-```bash
-uv sync --dev
-uv run pytest tests/acceptance/test_phase2_storage_commit.py -q
-uv run ruff check src tests tools
-uv run pytest -q
-uv run python -m compileall -q src tests tools
-git diff --check
-```
+Historical verification covered targeted or full test coverage, static analysis, bytecode compilation, diff hygiene, including `tests/acceptance/test_phase2_storage_commit.py`.
 
-- [x] **Step 3: Write the phase report**
+**Recorded activity 3 — Test intent: the phase report**
 
 `docs/phase2-storage-commit.md` records the segment format, manifest authority,
 flush/commit distinction, crash matrix, verification commands, and the absence
 of refresh, deletion, merge, query parsing, network, and vector behavior.
 
-- [x] **Step 4: Commit acceptance**
+**Recorded activity 4 — Recorded acceptance snapshot**
 
-```bash
-git add tests/acceptance/test_phase2_storage_commit.py docs/phase2-storage-commit.md
-git commit -m "test: accept immutable storage and commit"
-git status --short
-```
-
-Expected: clean worktree.
+Historical expected evidence: clean worktree.

@@ -1,8 +1,6 @@
-# MiniLucene Retrieval Kernel Implementation Plan
+# MiniLucene Retrieval Kernel Design and Implementation History
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans inline to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** Build a complete in-memory fielded lexical search kernel with positional analysis, query execution, global BM25, stored fields, and bounded Top-K.
+**Historical objective:** Build a complete in-memory fielded lexical search kernel with positional analysis, query execution, global BM25, stored fields, and bounded Top-K.
 
 **Architecture:** Immutable schema and token values feed one mutable `RamIndexBuilder`, which freezes into an immutable `MemorySegment`. Query rewriting and candidate matching operate on one `ReaderView`; BM25 weights use one global corpus-statistics snapshot and feed a fixed-size collector.
 
@@ -10,15 +8,15 @@
 
 ---
 
-### Task 1: Bootstrap the standalone package and test contract
+### Milestone 1: Bootstrap the standalone package and test contract
 
-**Files:**
-- Create: `pyproject.toml`
-- Create: `src/minilucene/__init__.py`
-- Create: `tests/test_public_surface.py`
-- Create: `tools/__init__.py`
+**Recorded file scope:**
+- Added: `pyproject.toml`
+- Added: `src/minilucene/__init__.py`
+- Added: `tests/test_public_surface.py`
+- Added: `tools/__init__.py`
 
-- [x] **Step 1: Write the public import RED test**
+**Recorded activity 1 — Test intent: the public import RED test**
 
 ```python
 from minilucene import (
@@ -37,17 +35,13 @@ def test_public_surface_imports():
     assert MemoryIndex(schema).schema == schema
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-Run:
+Historical verification covered targeted or full test coverage, including `tests/test_public_surface.py`.
 
-```bash
-uv run pytest tests/test_public_surface.py -q
-```
+Historical expected evidence: collection fails because `minilucene` is not importable.
 
-Expected: collection fails because `minilucene` is not importable.
-
-- [x] **Step 3: Create packaging and the temporary public shell**
+**Recorded activity 3 — Create packaging and the temporary public shell**
 
 ```toml
 [build-system]
@@ -75,36 +69,26 @@ pythonpath = ["src", "."]
 testpaths = ["tests"]
 ```
 
-Create `src/minilucene/__init__.py` with imports from the schema and memory
-modules introduced in Task 2; until Task 2 lands, define the four names in the
-same file with constructors that preserve the test signature. Task 2 removes
+The recorded scope added `src/minilucene/__init__.py` with imports from the schema and memory
+modules introduced in Milestone 2; until Milestone 2 lands, define the four names in the
+same file with constructors that preserve the test signature. Milestone 2 removes
 that temporary shell in the same phase, so no phase boundary exposes it.
 
-- [x] **Step 4: Sync and run the test**
+**Recorded activity 4 — Sync and run the test**
 
-```bash
-uv sync --dev
-uv run pytest tests/test_public_surface.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/test_public_surface.py`.
 
-Expected: `1 passed`.
+Historical expected evidence: `1 passed`.
 
-- [x] **Step 5: Commit**
+### Milestone 2: Freeze fields, schema, documents, and fingerprints
 
-```bash
-git add pyproject.toml uv.lock src tests/test_public_surface.py tools
-git commit -m "chore: bootstrap MiniLucene reference package"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/schema.py`
+- Added: `src/minilucene/document.py`
+- Changed: `src/minilucene/__init__.py`
+- Added: `tests/contract/test_schema.py`
 
-### Task 2: Freeze fields, schema, documents, and fingerprints
-
-**Files:**
-- Create: `src/minilucene/schema.py`
-- Create: `src/minilucene/document.py`
-- Modify: `src/minilucene/__init__.py`
-- Create: `tests/contract/test_schema.py`
-
-- [x] **Step 1: Write schema and document contract tests**
+**Recorded activity 1 — Test intent: schema and document contract tests**
 
 ```python
 import pytest
@@ -139,17 +123,13 @@ def test_document_rejects_unknown_fields_and_non_strings():
         freeze_document(schema, {"body": 1})
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-Run:
+Historical verification covered targeted or full test coverage, including `tests/contract/test_schema.py`.
 
-```bash
-uv run pytest tests/contract/test_schema.py -q
-```
+Historical expected evidence: imports fail for `schema` and `document`.
 
-Expected: imports fail for `schema` and `document`.
-
-- [x] **Step 3: Implement immutable schema values**
+**Recorded activity 3 — Design outcome: immutable schema values**
 
 ```python
 # src/minilucene/schema.py
@@ -242,7 +222,7 @@ def freeze_document(schema: Schema, values: Mapping[str, object]) -> FrozenDocum
     return MappingProxyType(dict(sorted(frozen.items())))
 ```
 
-- [x] **Step 4: Export the real public values and run tests**
+**Recorded activity 4 — Export the real public values and run tests**
 
 ```python
 # src/minilucene/__init__.py
@@ -251,31 +231,20 @@ from minilucene.schema import KeywordField, Schema, StoredField, TextField
 __all__ = ["KeywordField", "Schema", "StoredField", "TextField"]
 ```
 
-Run:
+Historical verification covered targeted or full test coverage, including `tests/contract/test_schema.py`.
 
-```bash
-uv run pytest tests/contract/test_schema.py -q
-```
+Historical expected evidence: `2 passed`.
 
-Expected: `2 passed`.
+### Milestone 3: Build positional, offset-preserving analysis
 
-- [x] **Step 5: Commit**
+**Recorded file scope:**
+- Added: `src/minilucene/analysis/__init__.py`
+- Added: `src/minilucene/analysis/model.py`
+- Added: `src/minilucene/analysis/pipeline.py`
+- Added: `src/minilucene/analysis/standard.py`
+- Added: `tests/unit/analysis/test_pipeline.py`
 
-```bash
-git add src/minilucene tests/contract/test_schema.py
-git commit -m "feat: freeze field and document schema"
-```
-
-### Task 3: Build positional, offset-preserving analysis
-
-**Files:**
-- Create: `src/minilucene/analysis/__init__.py`
-- Create: `src/minilucene/analysis/model.py`
-- Create: `src/minilucene/analysis/pipeline.py`
-- Create: `src/minilucene/analysis/standard.py`
-- Create: `tests/unit/analysis/test_pipeline.py`
-
-- [x] **Step 1: Write token, binary keyword, lowercase, and stop-gap tests**
+**Recorded activity 1 — Test intent: token, binary keyword, lowercase, and stop-gap tests**
 
 ```python
 from minilucene.analysis import (
@@ -299,17 +268,13 @@ def test_keyword_analyzer_emits_whole_value():
     )
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-Run:
+Historical verification covered targeted or full test coverage, including `tests/unit/analysis/test_pipeline.py`.
 
-```bash
-uv run pytest tests/unit/analysis/test_pipeline.py -q
-```
+Historical expected evidence: `minilucene.analysis` does not exist.
 
-Expected: `minilucene.analysis` does not exist.
-
-- [x] **Step 3: Implement the closed analysis pipeline**
+**Recorded activity 3 — Design outcome: the closed analysis pipeline**
 
 ```python
 # model.py
@@ -370,30 +335,21 @@ positions before filtering. `KeywordTokenizer` emits no token for an empty
 string and otherwise one exact token. Export `StandardAnalyzer`,
 `KeywordAnalyzer`, and `Token` from `analysis/__init__.py`.
 
-- [x] **Step 4: Run analyzer tests**
+**Recorded activity 4 — Verification intent: analyzer tests**
 
-```bash
-uv run pytest tests/unit/analysis/test_pipeline.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/analysis/test_pipeline.py`.
 
-Expected: `2 passed`.
+Historical expected evidence: `2 passed`.
 
-- [x] **Step 5: Commit**
+### Milestone 4: Freeze a complete in-memory positional segment
 
-```bash
-git add src/minilucene/analysis tests/unit/analysis
-git commit -m "feat: add positional analysis pipeline"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/index/__init__.py`
+- Added: `src/minilucene/index/postings.py`
+- Added: `src/minilucene/index/memory.py`
+- Added: `tests/contract/test_memory_index.py`
 
-### Task 4: Freeze a complete in-memory positional segment
-
-**Files:**
-- Create: `src/minilucene/index/__init__.py`
-- Create: `src/minilucene/index/postings.py`
-- Create: `src/minilucene/index/memory.py`
-- Create: `tests/contract/test_memory_index.py`
-
-- [x] **Step 1: Write postings, stored-field, and length tests**
+**Recorded activity 1 — Test intent: postings, stored-field, and length tests**
 
 ```python
 from minilucene.index.memory import RamIndexBuilder
@@ -422,15 +378,13 @@ def test_ram_segment_contains_positions_lengths_and_only_stored_values():
     assert segment.stored_documents == ({"id": "d1", "source": "manual"},)
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-```bash
-uv run pytest tests/contract/test_memory_index.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/contract/test_memory_index.py`.
 
-Expected: import fails for `RamIndexBuilder`.
+Historical expected evidence: import fails for `RamIndexBuilder`.
 
-- [x] **Step 3: Implement immutable postings and segment values**
+**Recorded activity 3 — Design outcome: immutable postings and segment values**
 
 ```python
 # postings.py
@@ -463,30 +417,21 @@ For stored fields it copies only stored values. `freeze()` sorts fields and
 terms, converts every collection to tuples and mapping proxies, and validates
 dense doc IDs plus increasing positions.
 
-- [x] **Step 4: Run the contract**
+**Recorded activity 4 — Verification intent: the contract**
 
-```bash
-uv run pytest tests/contract/test_memory_index.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/contract/test_memory_index.py`.
 
-Expected: `1 passed`.
+Historical expected evidence: `1 passed`.
 
-- [x] **Step 5: Commit**
+### Milestone 5: Define and execute the closed Query AST
 
-```bash
-git add src/minilucene/index tests/contract/test_memory_index.py
-git commit -m "feat: build immutable positional RAM segments"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/query/__init__.py`
+- Added: `src/minilucene/query/model.py`
+- Added: `src/minilucene/query/match.py`
+- Added: `tests/contract/test_query_matching.py`
 
-### Task 5: Define and execute the closed Query AST
-
-**Files:**
-- Create: `src/minilucene/query/__init__.py`
-- Create: `src/minilucene/query/model.py`
-- Create: `src/minilucene/query/match.py`
-- Create: `tests/contract/test_query_matching.py`
-
-- [x] **Step 1: Write term, phrase, prefix, and boolean counterexamples**
+**Recorded activity 1 — Test intent: term, phrase, prefix, and boolean counterexamples**
 
 ```python
 from minilucene.query import (
@@ -529,15 +474,13 @@ def test_boolean_and_prefix_have_frozen_set_semantics():
     assert reader.match(query) == {0}
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-```bash
-uv run pytest tests/contract/test_query_matching.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/contract/test_query_matching.py`.
 
-Expected: query imports fail.
+Historical expected evidence: query imports fail.
 
-- [x] **Step 3: Implement immutable query values and set matching**
+**Recorded activity 3 — Design outcome: immutable query values and set matching**
 
 `query/model.py` defines frozen dataclasses for `TermQuery`, `PhraseQuery`,
 `PrefixQuery`, `BooleanClause`, `BooleanQuery`, and `MatchAllQuery`, plus an
@@ -579,29 +522,20 @@ def match_query(reader: ReaderView, query: Query) -> set[int]:
 Phrase matching looks up each term's positions for the candidate and tests
 whether `p + query_position` exists for every normalized query position.
 
-- [x] **Step 4: Run query tests**
+**Recorded activity 4 — Verification intent: query tests**
 
-```bash
-uv run pytest tests/contract/test_query_matching.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/contract/test_query_matching.py`.
 
-Expected: `2 passed`.
+Historical expected evidence: `2 passed`.
 
-- [x] **Step 5: Commit**
+### Milestone 6: Compute one global live-document corpus-statistics snapshot
 
-```bash
-git add src/minilucene/query tests/contract/test_query_matching.py tests/helpers
-git commit -m "feat: execute positional query AST"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/search/stats.py`
+- Added: `src/minilucene/search/reader.py`
+- Added: `tests/unit/search/test_corpus_stats.py`
 
-### Task 6: Compute one global live-document corpus-statistics snapshot
-
-**Files:**
-- Create: `src/minilucene/search/stats.py`
-- Create: `src/minilucene/search/reader.py`
-- Create: `tests/unit/search/test_corpus_stats.py`
-
-- [x] **Step 1: Write global statistics tests**
+**Recorded activity 1 — Test intent: global statistics tests**
 
 ```python
 from tests.helpers.corpus import build_multi_segment_reader
@@ -618,15 +552,13 @@ def test_corpus_stats_span_segments_and_only_live_documents():
     assert stats.average_length("body") == 2.0
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-```bash
-uv run pytest tests/unit/search/test_corpus_stats.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/search/test_corpus_stats.py`.
 
-Expected: search reader imports fail.
+Historical expected evidence: search reader imports fail.
 
-- [x] **Step 3: Implement immutable reader and stats**
+**Recorded activity 3 — Design outcome: immutable reader and stats**
 
 `ReaderView` receives an ordered tuple of immutable segments and equally sized
 live-doc frozensets. It assigns each hit a `DocAddress(segment_generation,
@@ -651,30 +583,21 @@ Build document frequency by counting one live posting per segment document,
 not term frequency. Average length excludes deleted documents and documents
 without that field.
 
-- [x] **Step 4: Run stats tests**
+**Recorded activity 4 — Verification intent: stats tests**
 
-```bash
-uv run pytest tests/unit/search/test_corpus_stats.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/search/test_corpus_stats.py`.
 
-Expected: `1 passed`.
+Historical expected evidence: `1 passed`.
 
-- [x] **Step 5: Commit**
+### Milestone 7: Implement BM25 saturation and field boosts
 
-```bash
-git add src/minilucene/search tests/unit/search tests/helpers
-git commit -m "feat: snapshot global corpus statistics"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/search/bm25.py`
+- Added: `src/minilucene/search/scorer.py`
+- Added: `tests/unit/search/test_bm25.py`
+- Added: `tests/contract/test_ranking.py`
 
-### Task 7: Implement BM25 saturation and field boosts
-
-**Files:**
-- Create: `src/minilucene/search/bm25.py`
-- Create: `src/minilucene/search/scorer.py`
-- Create: `tests/unit/search/test_bm25.py`
-- Create: `tests/contract/test_ranking.py`
-
-- [x] **Step 1: Write math and ranking counterexamples**
+**Recorded activity 1 — Test intent: math and ranking counterexamples**
 
 ```python
 import pytest
@@ -704,15 +627,13 @@ def test_title_boost_changes_ranking():
     assert hits[0].stored_fields["id"] == "0"
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-```bash
-uv run pytest tests/unit/search/test_bm25.py tests/contract/test_ranking.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/search/test_bm25.py`, `tests/contract/test_ranking.py`.
 
-Expected: BM25 and scorer imports fail.
+Historical expected evidence: BM25 and scorer imports fail.
 
-- [x] **Step 3: Implement BM25 and scorer weights**
+**Recorded activity 3 — Design outcome: BM25 and scorer weights**
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -736,32 +657,23 @@ queries sum their component term scores only for phrase-matching documents.
 Boolean `MUST_NOT` clauses are never scored. Multiply each contribution by
 the field's frozen boost.
 
-- [x] **Step 4: Run BM25 and ranking tests**
+**Recorded activity 4 — Verification intent: BM25 and ranking tests**
 
-```bash
-uv run pytest tests/unit/search/test_bm25.py tests/contract/test_ranking.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/search/test_bm25.py`, `tests/contract/test_ranking.py`.
 
-Expected: all tests pass.
+Historical expected evidence: all tests pass.
 
-- [x] **Step 5: Commit**
+### Milestone 8: Collect bounded Top-K and expose MemoryIndex search
 
-```bash
-git add src/minilucene/search tests/unit/search/test_bm25.py tests/contract/test_ranking.py
-git commit -m "feat: rank with global BM25 and field boosts"
-```
+**Recorded file scope:**
+- Added: `src/minilucene/search/collector.py`
+- Added: `src/minilucene/search/searcher.py`
+- Changed: `src/minilucene/index/memory.py`
+- Changed: `src/minilucene/__init__.py`
+- Added: `tests/unit/search/test_topk.py`
+- Added: `tests/contract/test_memory_search.py`
 
-### Task 8: Collect bounded Top-K and expose MemoryIndex search
-
-**Files:**
-- Create: `src/minilucene/search/collector.py`
-- Create: `src/minilucene/search/searcher.py`
-- Modify: `src/minilucene/index/memory.py`
-- Modify: `src/minilucene/__init__.py`
-- Create: `tests/unit/search/test_topk.py`
-- Create: `tests/contract/test_memory_search.py`
-
-- [x] **Step 1: Write heap-oracle and public search tests**
+**Recorded activity 1 — Test intent: heap-oracle and public search tests**
 
 ```python
 from minilucene import MemoryIndex, Schema, TextField
@@ -789,15 +701,13 @@ def test_public_memory_index_returns_stored_fields():
     assert result.hits[0].stored_fields == {"body": "kafka replicas"}
 ```
 
-- [x] **Step 2: Run and verify RED**
+**Recorded activity 2 — Verification intent: and verify RED**
 
-```bash
-uv run pytest tests/unit/search/test_topk.py tests/contract/test_memory_search.py -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/search/test_topk.py`, `tests/contract/test_memory_search.py`.
 
-Expected: collector and public `MemoryIndex` are missing.
+Historical expected evidence: collector and public `MemoryIndex` are missing.
 
-- [x] **Step 3: Implement the bounded collector and facade**
+**Recorded activity 3 — Design outcome: the bounded collector and facade**
 
 `SearchHit` contains score, segment generation, local doc ID, and an immutable
 stored-field mapping. `TopDocs` contains total hit count and an ordered hit
@@ -813,29 +723,19 @@ segment, builds one `ReaderView`, and delegates to `IndexSearcher`. The public
 facade accepts keyword arguments for documents and exports the real schema,
 query, and result values from `minilucene.__init__`.
 
-- [x] **Step 4: Run focused and full tests**
+**Recorded activity 4 — Verification intent: focused and full tests**
 
-```bash
-uv run pytest tests/unit/search/test_topk.py tests/contract/test_memory_search.py -q
-uv run pytest -q
-```
+Historical verification covered targeted or full test coverage, including `tests/unit/search/test_topk.py`, `tests/contract/test_memory_search.py`.
 
-Expected: both commands exit `0`.
+Historical expected evidence: both commands exit `0`.
 
-- [x] **Step 5: Commit**
+### Milestone 9: Accept the retrieval kernel invariants
 
-```bash
-git add src/minilucene tests/unit/search/test_topk.py tests/contract/test_memory_search.py
-git commit -m "feat: expose bounded in-memory Top-K search"
-```
+**Recorded file scope:**
+- Added: `tests/acceptance/test_phase1_retrieval_kernel.py`
+- Added: `docs/phase1-retrieval-kernel.md`
 
-### Task 9: Accept the retrieval kernel invariants
-
-**Files:**
-- Create: `tests/acceptance/test_phase1_retrieval_kernel.py`
-- Create: `docs/phase1-retrieval-kernel.md`
-
-- [x] **Step 1: Write one end-to-end kernel acceptance**
+**Recorded activity 1 — Test intent: one end-to-end kernel acceptance**
 
 ```python
 from minilucene import KeywordField, MemoryIndex, Schema, TextField
@@ -870,32 +770,19 @@ def test_fielded_phrase_bm25_topk_and_stored_fields_close_one_loop():
     assert result.hits[0].stored_fields["id"] == "1"
 ```
 
-- [x] **Step 2: Run the acceptance and full verification**
+**Recorded activity 2 — Verification intent: the acceptance and full verification**
 
-```bash
-uv run pytest tests/acceptance/test_phase1_retrieval_kernel.py -q
-uv run ruff check src tests tools
-uv run pytest -q
-uv run python -m compileall -q src tests tools
-git diff --check
-```
+Historical verification covered targeted or full test coverage, static analysis, bytecode compilation, diff hygiene, including `tests/acceptance/test_phase1_retrieval_kernel.py`.
 
-Expected: every command exits `0`.
+Historical expected evidence: every command exits `0`.
 
-- [x] **Step 3: Write the phase report**
+**Recorded activity 3 — Test intent: the phase report**
 
 `docs/phase1-retrieval-kernel.md` records the public API, exact query semantics,
 BM25 defaults, Top-K tie-break, test commands, and deliberate absence of disk,
 refresh, parser, highlighting, vector, and network behavior.
 
-- [x] **Step 4: Commit Phase 1 acceptance**
+**Recorded activity 4 — Recorded Phase 1 acceptance**
 
-```bash
-git add docs/phase1-retrieval-kernel.md tests/acceptance/test_phase1_retrieval_kernel.py
-git commit -m "test: accept MiniLucene retrieval kernel"
-git status --short
-git log -1 --oneline
-```
-
-Expected: clean worktree and last commit
+Historical expected evidence: clean worktree and last commit
 `test: accept MiniLucene retrieval kernel`.

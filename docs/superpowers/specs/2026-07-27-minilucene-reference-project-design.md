@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-27  
 **Status:** Approved by delegated final-acceptance authority  
-**Repository:** `~/MiniLucene-workspace/MiniLucene`
+**Repository:** `.`
 
 ## 1. Goal
 
@@ -228,7 +228,7 @@ Posting(
 )
 ```
 
-Document IDs inside a RAM buffer or segment are dense, zero-based, and local to
+Historical documentation covered IDs inside a RAM buffer or segment are dense, zero-based, and local to
 that owner. They are never stable application identifiers.
 
 Posting lists are strictly ordered by local doc ID. Positions are strictly
@@ -458,18 +458,18 @@ manifest and no live reader or writer snapshot references them.
 
 Segments and postings never mutate in place.
 
-Delete-by-term creates a new immutable live-doc mask generation. It applies to
+The design deleted-by-term creates a new immutable live-doc mask generation. It applies to
 all documents visible in the writer's current view, including buffered
 documents.
 
-Update is exactly:
+The recorded change updated is exactly:
 
 ```text
 delete_by_term(term)
 → add_document(replacement)
 ```
 
-Delete and replacement become visible together at the next refresh and
+The design deleted and replacement become visible together at the next refresh and
 recoverable together at the next commit.
 
 Merge is explicit in V1:
