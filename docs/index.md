@@ -12,7 +12,7 @@ an inspectable teaching system, not an Apache Lucene API or file-format clone.
 You need Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/system-in-miniature/MiniLucene.git
+git clone https://github.com/system-in-miniature/mini-lucene.git
 cd MiniLucene
 uv sync --dev
 ```
@@ -39,6 +39,6 @@ tour; then use the mapping and behavior matrix to separate this miniature's
 mechanisms from production Lucene behavior.
 
 For the complete feature scope, mental model, and public API example, see the
-[English README](https://github.com/system-in-miniature/MiniLucene#readme).
+[English README](https://github.com/system-in-miniature/mini-lucene#readme).
 The [design history archive](superpowers/README.md) records construction-time
 plans; current docs and executable tests remain the source of truth.

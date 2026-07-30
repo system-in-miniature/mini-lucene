@@ -11,7 +11,7 @@ MiniLucene 是一个紧凑的 Python 词法搜索参考实现，用来串联字�
 需要 Python 3.12+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-git clone https://github.com/system-in-miniature/MiniLucene.git
+git clone https://github.com/system-in-miniature/mini-lucene.git
 cd MiniLucene
 uv sync --dev
 ```
@@ -36,6 +36,6 @@ uv run minilucene search demo-index '"follower replicas"' \
 这个微型实现和生产 Lucene 的语义边界。
 
 完整功能范围、心智模型和公共 API 示例见
-[中文 README](https://github.com/system-in-miniature/MiniLucene/blob/main/README.zh-CN.md)。
+[中文 README](https://github.com/system-in-miniature/mini-lucene/blob/main/README.zh-CN.md)。
 [设计历史存档](../superpowers/README.md)记录建设期计划；现行文档与可执行测试
 才是当前事实来源。
