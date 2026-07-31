@@ -10,70 +10,76 @@ theme:
   logo: assets/brand/avatar.svg
   favicon: assets/brand/avatar.svg
   features:
+    - navigation.tabs
     - navigation.sections
     - navigation.top
     - content.code.copy
 
 markdown_extensions:
+  - pymdownx.details
+  - pymdownx.superfences
+
   - admonition
   - attr_list
   - toc:
       permalink: true
 
 nav:
-  - Tutorial:
-      - Book contents: tutorial/index.md
-      - 01 · Meet MiniLucene: tutorial/01-getting-started.md
-      - 02 · The Analysis Chain: tutorial/02-analysis.md
-      - 03 · The Inverted Index: tutorial/03-inverted-index.md
-      - 04 · The Disk Codec: tutorial/04-codec.md
-      - 05 · Segments and NRT: tutorial/05-segments-nrt.md
-      - 06 · Deletes and Updates: tutorial/06-deletes-updates.md
-      - 07 · Commit Atomicity: tutorial/07-commit-atomicity.md
-      - 08 · Scoring and Top-K: tutorial/08-scoring.md
-      - 09 · The Query Language: tutorial/09-query-language.md
-      - 10 · Merge and Beyond: tutorial/10-merge-and-beyond.md
-      - 11 · Doc-at-a-Time Execution: tutorial/11-daat.md
-  - 中文教程:
-      - 全书目录: zh/tutorial/index.md
-      - 01 · 认识 MiniLucene: zh/tutorial/01-getting-started.md
-      - 02 · 分析链: zh/tutorial/02-analysis.md
-      - 03 · 倒排索引: zh/tutorial/03-inverted-index.md
-      - 04 · 磁盘编码: zh/tutorial/04-codec.md
-      - 05 · 段与近实时: zh/tutorial/05-segments-nrt.md
-      - 06 · 删除与更新: zh/tutorial/06-deletes-updates.md
-      - 07 · 提交原子性: zh/tutorial/07-commit-atomicity.md
-      - 08 · 打分与 Top-K: zh/tutorial/08-scoring.md
-      - 09 · 查询语言: zh/tutorial/09-query-language.md
-      - 10 · 合并与方法论: zh/tutorial/10-merge-and-beyond.md
-      - 11 · 文档一次查询执行: zh/tutorial/11-daat.md
-  - Reference:
-      - English overview: index.md
-      - Architecture:
-          - Retrieval kernel: phase1-retrieval-kernel.md
-          - Storage and commit: phase2-storage-commit.md
-          - NRT mutation and merge: phase3-nrt-mutation.md
-      - Lucene mapping: lucene-mapping.md
-      - Labs guide: labs-guide.md
-      - Behavior matrix: behavior-matrix.md
-      - Segment format: segment-format.md
-      - Final acceptance: final-acceptance.md
-  - 中文参考资料:
-      - 中文概览: zh/index.md
-      - 架构:
-          - 检索内核: zh/phase1-retrieval-kernel.md
-          - 存储与提交: zh/phase2-storage-commit.md
-          - NRT 变更与合并: zh/phase3-nrt-mutation.md
-      - Lucene 映射: zh/lucene-mapping.md
-      - 实验指南: zh/labs-guide.md
-      - 行为矩阵: zh/behavior-matrix.md
-      - 段格式: zh/segment-format.md
-      - 最终验收: zh/final-acceptance.md
-  - Design history archive · 设计历史存档:
-      - Archive notice · 存档说明: superpowers/README.md
-      - Reference-project design: superpowers/specs/2026-07-27-minilucene-reference-project-design.md
-      - Reference-project plan: superpowers/plans/2026-07-27-minilucene-reference-project.md
-      - Retrieval-kernel plan: superpowers/plans/2026-07-27-minilucene-retrieval-kernel.md
-      - Storage-and-commit plan: superpowers/plans/2026-07-27-minilucene-storage-commit.md
-      - NRT-mutation plan: superpowers/plans/2026-07-27-minilucene-nrt-mutation.md
-      - Product-acceptance plan: superpowers/plans/2026-07-27-minilucene-product-acceptance.md
+  - Home: index.md
+  - English:
+      - Tutorial:
+          - Book contents: tutorial/index.md
+          - 01 · Meet MiniLucene: tutorial/01-getting-started.md
+          - 02 · The Analysis Chain: tutorial/02-analysis.md
+          - 03 · The Inverted Index: tutorial/03-inverted-index.md
+          - 04 · The Disk Codec: tutorial/04-codec.md
+          - 05 · Segments and NRT: tutorial/05-segments-nrt.md
+          - 06 · Deletes and Updates: tutorial/06-deletes-updates.md
+          - 07 · Commit Atomicity: tutorial/07-commit-atomicity.md
+          - 08 · Scoring and Top-K: tutorial/08-scoring.md
+          - 09 · The Query Language: tutorial/09-query-language.md
+          - 10 · Merge and Beyond: tutorial/10-merge-and-beyond.md
+          - 11 · Doc-at-a-Time Execution: tutorial/11-daat.md
+      - Reference:
+          - Architecture:
+              - Retrieval kernel: phase1-retrieval-kernel.md
+              - Storage and commit: phase2-storage-commit.md
+              - NRT mutation and merge: phase3-nrt-mutation.md
+          - Lucene mapping: lucene-mapping.md
+          - Labs guide: labs-guide.md
+          - Behavior matrix: behavior-matrix.md
+          - Segment format: segment-format.md
+          - Final acceptance: final-acceptance.md
+          - Design history archive:
+              - Archive notice: superpowers/README.md
+              - Reference-project design: superpowers/specs/2026-07-27-minilucene-reference-project-design.md
+              - Reference-project plan: superpowers/plans/2026-07-27-minilucene-reference-project.md
+              - Retrieval-kernel plan: superpowers/plans/2026-07-27-minilucene-retrieval-kernel.md
+              - Storage-and-commit plan: superpowers/plans/2026-07-27-minilucene-storage-commit.md
+              - NRT-mutation plan: superpowers/plans/2026-07-27-minilucene-nrt-mutation.md
+              - Product-acceptance plan: superpowers/plans/2026-07-27-minilucene-product-acceptance.md
+  - 简体中文:
+      - 教程:
+          - 全书目录: zh/tutorial/index.md
+          - 01 · 认识 MiniLucene: zh/tutorial/01-getting-started.md
+          - 02 · 分析链: zh/tutorial/02-analysis.md
+          - 03 · 倒排索引: zh/tutorial/03-inverted-index.md
+          - 04 · 磁盘编码: zh/tutorial/04-codec.md
+          - 05 · 段与近实时: zh/tutorial/05-segments-nrt.md
+          - 06 · 删除与更新: zh/tutorial/06-deletes-updates.md
+          - 07 · 提交原子性: zh/tutorial/07-commit-atomicity.md
+          - 08 · 打分与 Top-K: zh/tutorial/08-scoring.md
+          - 09 · 查询语言: zh/tutorial/09-query-language.md
+          - 10 · 合并与方法论: zh/tutorial/10-merge-and-beyond.md
+          - 11 · 文档一次查询执行: zh/tutorial/11-daat.md
+      - 参考资料:
+          - 中文概览: zh/index.md
+          - 架构:
+              - 检索内核: zh/phase1-retrieval-kernel.md
+              - 存储与提交: zh/phase2-storage-commit.md
+              - NRT 变更与合并: zh/phase3-nrt-mutation.md
+          - Lucene 映射: zh/lucene-mapping.md
+          - 实验指南: zh/labs-guide.md
+          - 行为矩阵: zh/behavior-matrix.md
+          - 段格式: zh/segment-format.md
+          - 最终验收: zh/final-acceptance.md
