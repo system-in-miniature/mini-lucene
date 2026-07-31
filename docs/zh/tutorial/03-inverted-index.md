@@ -9,7 +9,7 @@
 
 完成本章后，你能够追踪分析结果如何进入 posting list，区分词频、位置、字段长度
 和 stored 字段，解释文档 ID 为何是段内局部的，检查 RAM 段并关联搜索结果，以及
-区分“Top-K 存储有界”和“整个搜索是 DAAT/O(K)”。
+区分“DAAT 的 Top-K 命中物化有界”和“全部搜索工作都是 O(K)”。
 
 ## 机制讲解：构造 RAM 段
 
@@ -63,10 +63,11 @@ boost、长度统计与查询 clause。
 避免分数取决于碰巧在哪次 flush 中分段。
 
 `src/minilucene/search/collector.py` 的 `TopKCollector.collect` 最多保留 K 个
-hit，却仍累计完整命中数，因此 `total_hits` 可大于 `len(hits)`。但不能夸大：
-当前 searcher 会物化匹配 map，并在 collect 前为所有匹配构造 stored fields/高亮；
-没有 DAAT、skip、WAND 或 collect-then-fetch。“Top-K heap 有界”是真，
-“整体只用 O(K) 内存和工作”是假。
+hit，却仍累计完整命中数，因此 `total_hits` 可大于 `len(hits)`。当前 searcher
+会让受支持的 term/Boolean 树流经 DAAT 游标，并执行 collect-then-fetch，所以只为
+最终胜者构造 stored fields/高亮。含 phrase 的树仍回退完整匹配 map，且没有
+skip data、WAND 或竞争分数剪枝。“Top-K 命中物化有界”是真，“全部查询工作都为
+O(K)”是假。[第 11 章](11-daat.md)会完整展开这条边界。
 
 RAM builder 可变，frozen segment 不可变。删除以后发布独立 live-doc mask，merge
 创建替代段，而不是原地改 posting，这正是 point-in-time reader 的基础。
@@ -74,7 +75,8 @@ RAM builder 可变，frozen segment 不可变。删除以后发布独立 live-do
 ### 成本模型与确定性
 
 倒排把工作从查询时移到建索引时。term query 直接词典查候选，phrase 再检查位置，
-Boolean 合并候选集合；但当前 Python 实现仍物化中间集合和 score map。
+Boolean 组合有序游标。含 phrase 的查询当前回退保留的集合/map oracle；rewrite
+后的 term/Boolean 树执行 DAAT。
 `freeze` 排序字段和 term，文档按插入顺序，posting doc ID 递增，磁盘 codec 据此
 产生规范输出并拒绝乱序。Top-K tie-break 使用 score 与文档地址，不依赖字典偶然
 迭代顺序。

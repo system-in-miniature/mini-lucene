@@ -7,7 +7,7 @@
 1. 解释为什么 merge 要重写选中的不可变段，而不是拼接文件；
 2. 追踪存活文档过滤、稠密文档 ID 重映射和 writer 段集合替换；
 3. 区分成功 merge 发布、持久 commit 与垃圾回收；
-4. 解释为什么 MiniLucene 没有自动 merge policy、后台 scheduler 或 DAAT 搜索；以及
+4. 解释自动 merge 与 DAAT 之后仍缺少的优化边界；以及
 5. 把项目缺口转化成进入 Apache Lucene 的具体阅读路线。
 
 ## 1. 为什么需要 merge
@@ -104,22 +104,25 @@ MiniLucene 没有这些调度机制。它的显式同步方法让四条不变量
 [MiniLucene 到 Lucene 映射](../lucene-mapping.md)则给出 `MergePolicy` 与
 `MergeScheduler` 这些生产对应物。
 
-## 7. 下一个主要缺口：document-at-a-time 执行
+## 7. 下一批查询执行缺口
 
-Merge 只是一个前进方向。MiniLucene 当前查询引擎会物化完整匹配集合和分数字典。Apache Lucene 按文档顺序推进 postings 迭代器，组合 scorer，并把有竞争力的命中流式送进 collector。这种 document-at-a-time（DAAT）设计支持 postings skip、专用 conjunction/disjunction 执行、two-phase matching 和竞争分数剪枝。
+Merge 只是一个前进方向。MiniLucene 现在已经按文档顺序推进 postings，组合
+term/Boolean scorer，把命中流式送进 Top-K，并只为胜者提取 stored 内容。
+[第 11 章](11-daat.md)实现并检验了这段 DAAT。含 phrase 的树仍回退完整集合与
+分数字典，游标层也没有 skip data 或竞争分数剪枝。
 
 超越本仓库的一条合理进阶路线是：
 
 ```text
-当前 ReaderView.postings() tuple
-  → 类 PostingsEnum 的 next_doc()/advance() cursor
-  → conjunction 与 disjunction 迭代器
-  → scorer 迭代进入轻量 collector
-  → 只为胜者 fetch stored fields
+当前线性 PostingsIterator.advance()
+  → 编码 skip data 与块感知 advance
+  → phrase approximation + 位置 confirmation
+  → per-leaf scorer/collector 执行
   → block-max 元数据与竞争性跳过
 ```
 
-不要从 WAND 开始。首先用精确 cursor 生命周期替换完整集合所有权，同时保持查询语义；然后测量。当前有界 `TopKCollector` 可以启发 collector 接口，但第 8 章已经说明，它本身并不会创造 DAAT 执行。
+不要直接跳到 WAND。先迁移 phrase 且不改变冻结的打分语义，增加可观察游标统计，
+再测量 skip 元数据是否帮助真实语料。每一步都继续与保留的集合 oracle 对拍。
 
 ## 8. 进入真实 Lucene 的实用路线
 
@@ -243,13 +246,18 @@ Merge 并 commit 后，为什么 `collect_garbage()` 仍可能保留输入段？
 
 ### 练习 4——路线图
 
-在 DAAT 执行与自动 merge 调度中选择一个下一子系统。写一页设计，包含一条不变量、最小 API、故障边界和可执行验收测试。
+在 phrase two-phase iteration 与自动 merge 调度中选择一个下一子系统。写一页
+设计，包含一条不变量、最小 API、故障边界和可执行验收测试。
 
 ??? note "参考答案"
 
-    DAAT 设计应从生命周期明确的 cursor 开始，包含 `doc_id`、
-    `next_doc()` 与 `advance(target)`，然后把命中和分数与当前完整集合 oracle 对比。Merge scheduler 设计应分离确定性选择与执行，保留 writer 单 owner，并注入发布失败，证明旧 writer 集合仍是权威状态。
+    phrase 设计可以用 term 合取作为 approximation、positions 作为 confirmation，
+    再把命中和分数与完整集合 oracle 对比。Merge scheduler 设计应分离确定性选择
+    与执行，保留 writer 单 owner，并注入发布失败，证明旧 writer 集合仍是权威状态。
 
 ## 小结
 
-显式 merge 捕获不可变段及其精确 live 掩码，只稠密重映射存活文档，发布新段，并且仅在成功后交换 writer 状态。Commit 与 owner-aware 垃圾回收是之后不同的边界。MiniLucene 止步于自动 `TieredMergePolicy` 调度和 DAAT 查询执行之前；它们不是模糊遗漏，而是具体下一接口。完成本教程后，你应能带着更尖锐的问题阅读真实 Lucene，同时不会把这个教学 codec 误认为真实 Lucene。
+显式 merge 捕获不可变段及其精确 live 掩码，只稠密重映射存活文档，发布新段，
+并且仅在成功后交换 writer 状态。Commit 与 owner-aware 垃圾回收是之后不同的边界。
+MiniLucene 止步于自动 `TieredMergePolicy`、phrase two-phase iteration、skip data
+与竞争分数剪枝之前。第 11 章继续讲已经实现的 DAAT 基础。

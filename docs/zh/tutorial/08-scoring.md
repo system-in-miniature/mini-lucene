@@ -5,19 +5,21 @@
 完成本章后，你将能够：
 
 1. 计算 MiniLucene 用于一项 BM25 词项贡献的四类输入；
-2. 追踪匹配、打分、stored-field 加载和 Top-K 收集；
+2. 追踪 DAAT 匹配/打分、Top-K 收集与后置 stored-field fetch；
 3. 解释确定性同分规则，以及为什么 `top_k=0` 仍会统计匹配数；
-4. 找出当前 phrase 打分和 collect-then-fetch 相对 Apache Lucene 的偏差；以及
+4. 找出当前 phrase 打分与 DAAT fallback 边界；以及
 5. 验证已删除文档不会贡献 MiniLucene 的语料统计。
 
 ## 1. 匹配与打分是两个阶段
 
 查询先决定哪些文档有资格，再给它们分数。
-`src/minilucene/search/scorer.py` 的 `score_query()` 首先调用
-`match_query(reader, query)`，物化完整的候选快照文档 ID
-`set[int]`。这是便于理解正确性的教学边界：Boolean 和 phrase 逻辑可以与排序分开学习。
+`src/minilucene/search/scorer.py` 的 `iter_scored_docs()` 会把 rewrite 后的
+term、match-all 与 Boolean 树编译为 DAAT scorer 游标，每次产出一个
+`(doc_id, score)`。保留的 `score_query()` 会从 `match_query()` 的完整
+`set[int]` 开始；它现在是正确性 oracle，也是 phrase 或未 rewrite prefix
+叶子的整树 fallback。
 
-对于 `TermQuery`，`score_query()` 调用 `_term_scores()`。它为每个存活 posting 读取：
+对于 `TermQuery`，DAAT term scorer 与 oracle `_term_scores()` 都读取：
 
 - `tf`：该文档该字段内的词频；
 - `df`：该字段该词项的存活文档频率；
@@ -62,7 +64,7 @@ BM25 分数既不是概率，也不是百分比。它适合在相同查询、rea
 
 ## 3. 复合分数
 
-`src/minilucene/search/scorer.py` 的 `score_query()` 遵循封闭查询 AST：
+DAAT 节点与保留的 `score_query()` 遵循同一个封闭查询 AST：
 
 - term 获得一个 BM25 贡献；
 - prefix 通常先被 rewrite，随后由匹配的展开词项贡献分数；
@@ -92,27 +94,28 @@ collector 为命中对象使用 `O(K)` 内存，同时 `total_hits` 仍统计完
 
 同分规则使用段和本地 ID，而不是 stored 应用 ID。这些物理 ID 在一份 reader 快照内稳定，但 merge 后可能改变，因此应用不能把该兜底顺序当作永久外部身份。MiniLucene 通过仅活文档统计保持 merge 前后分数，但同分文档可能获得新的稠密本地 ID。需要稳定业务顺序的产品必须添加显式排序键；字段排序本身不在 V1 范围内。
 
-## 5. 关键的 collect-then-fetch 偏差
+## 5. 先 collect，再 fetch 胜者
 
-很容易误以为 `O(K)` 堆会让整条搜索路径都变成 `O(K)`。源码并非如此。
+`src/minilucene/search/searcher.py` 的 `IndexSearcher.search()` 现在把查询执行
+与结果物化明确分开。
 
-`src/minilucene/search/searcher.py` 的 `IndexSearcher.search()` 先 rewrite 查询，再调用 `score_query()`，物化完整分数字典。随后它遍历每个有分文档。在调用 `collector.collect()` 之前，它已经解析地址、加载 stored fields，并调用
-`highlight_document()`。
+第一阶段 rewrite 查询、消费 `iter_scored_docs()`、解析轻量 address，并把
+score/doc identity 交给 `TopKCollector`。第二阶段取得排好序的胜出候选，此时才
+调用 `stored_fields()` 与 `highlight_document()`。
 
 ```text
 MiniLucene
-完整匹配集合 → 完整分数字典
-→ 为每个匹配 fetch stored fields/highlight → Top-K 堆
-
-典型 Lucene 方向
-postings 迭代器/scorer → 收集 top 文档 ID 与分数
+postings 迭代器/scorer → 收集 Top-K 文档 ID 与分数
 → 只为胜者 fetch stored fields/highlight
 ```
 
-因此，MiniLucene 只保留 K 个 `SearchHit` 对象，但匹配与打分内存仍与全部匹配数成比例，并且为所有匹配执行 stored-field/highlighting 工作。它没有 document-at-a-time 迭代器、postings skip、block-max WAND、two-phase iterator、leaf collector 或后置 fetch 阶段。
+因此 stored-field 与 highlighting 工作受 K 限制，`top_k=0` 时两者均为零。
+这不代表全部搜索工作是 `O(K)`：每个 DAAT 命中仍会打分，含 phrase 的树会走完整
+集合/字典 fallback，而且没有 postings skip、block-max WAND、phrase two-phase
+iterator 或 leaf collector。
 
-这不是一个小优化免责声明，而是当前执行架构。行为矩阵只承诺
-[有界 Top-K](../behavior-matrix.md) 保留，并不承诺 `O(K)` 查询引擎。映射文档的查询执行警告明确记录了该偏差。
+[第 11 章](11-daat.md)会跟踪游标算法，并给出可执行的
+`10 matched / 3 fetched` 与 `4 matched / 0 fetched` 观察。
 
 ## 6. 与 Apache Lucene 对照
 
@@ -120,9 +123,10 @@ BM25 概念可以迁移：词频饱和、逆文档频率、长度归一化和 si
 
 若干生产细节不能直接迁移：
 
-- Apache Lucene 在 leaf reader 上使用基于迭代器的 `Scorer`，而不是完整 Python set 与 dict。
+- MiniLucene 现在已经迁移基本 iterator/scorer 方向，但仍使用一个教学用全局
+  reader，而不是真实 Lucene 的 leaf scorer。
 - Lucene 可以跳过无竞争力 postings，并使用优化的 conjunction、disjunction、two-phase 和 top-score 收集机制。
-- Lucene 通常在收集胜出的文档 ID 后才 fetch stored fields。
+- 两者现在都在收集胜出文档 ID 后才 fetch stored fields。
 - Lucene 的已删除文档可能在 merge 前仍留在段统计中；MiniLucene 立刻排除它们。
 - MiniLucene phrase 打分汇总词项分数，而不是 phrase frequency。
 - MiniLucene 在 schema 中固定 boost，而不是用查询时 boost 包装查询。
@@ -209,25 +213,27 @@ UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run pytest tests/unit/search/test_bm25.
 
 ??? note "参考答案"
 
-    `score_query()` 已经物化完整候选集合和分数字典。collector 只限制保留的
-    `SearchHit` 对象，不限制匹配或打分状态。`IndexSearcher.search()` 还会在堆准入之前 fetch 并高亮每个匹配。
+    collector 限制的是保留候选与后置命中物化，不是全部查询工作。DAAT 仍会为
+    每个匹配 doc 打分；含 phrase 的树还会回退完整候选与分数集合。系统没有
+    skip/WAND 剪枝。
 
 ### 练习 3——动手题
 
-不要修改 `src/`。把 `src/minilucene/search/searcher.py` 复制到临时目录，草拟一个两阶段“先收集地址，再 fetch 胜者”的版本。列出 collector 返回类型需要怎样改变。
+不要修改 `src/`。把 collect-then-fetch 契约测试复制到临时目录，扩展 counting
+reader：除 `stored_fields()` 外也记录 `address()` 调用。
 
-验收方式：临时 diff 必须避免在 Top-K 选择前调用 `stored_fields()` 和
-`highlight_document()`，保持 `total_hits`，并描述如何把胜者地址转换成最终
-`SearchHit` 对象。
+验收方式：十个匹配、`top_k=3` 时应观察十次 address 解析、三次 stored-field
+fetch；`top_k=0` 时保持 `total_hits=10` 且 fetch 为零。
 
 ??? note "参考答案"
 
-    第一阶段可以收集轻量
-    `(score, segment_generation, local_doc_id, snapshot_doc_id)` 记录。
-    `top_docs()` 找出胜者后，第二阶段只为这些记录解析 stored fields 与
-    highlights。collector 应返回轻量 scored address，而不是当前完全物化的
-    `SearchHit`；fetch 后仍可组装公开 `TopDocs`。
+    address 解析属于第一阶段，因为确定性 Top-K 同分规则使用 segment/local
+    identity。stored fields 与 highlights 属于第二阶段，因此次数跟保留候选数，
+    而不是总命中数。
 
 ## 小结
 
-MiniLucene 把匹配资格与 BM25 贡献分开，冻结仅活文档统计，并用确定性堆最多保留 K 个命中。该堆并未改变当前的全量物化架构：每个匹配都会产生分数、stored fields 与 highlight；phrase 分数汇总词项证据，而不是短语频率。下一章将前移一个阶段，研究文本如何变成 scorer 接受的封闭查询 AST。
+MiniLucene 把匹配资格与 BM25 贡献分开，冻结仅活文档统计，并用确定性堆最多保留
+K 个命中。受支持的 term/Boolean 树执行 DAAT，stored fields/highlights 只为胜者
+生成。Phrase 树仍使用全量物化 oracle，phrase 分数也仍汇总词项证据，而不是短语
+频率。第 9 章前移到 query AST；第 11 章展开 iterator 执行模型。

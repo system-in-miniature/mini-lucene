@@ -75,12 +75,12 @@ atomically published restart root
 
 query text → lexer → parser → Query AST → prefix rewrite
                                           ↓
-                          matching → global BM25
+                          DAAT 游标 → global BM25
+                                          ↓
+                                  Top-K 堆
                                           ↓
                          stored fields + highlighting
-                           for every matching document
-                                          ↓
-                                      Top-K heap
+                              仅处理最终胜者
 ```
 
 `TextField` 会被分词并保留位置信息。`KeywordField` 将完整值作为一个精确词项
@@ -92,8 +92,9 @@ query text → lexer → parser → Query AST → prefix rewrite
 `TextField` 值、使用这些偏移量，并对全部原始文本进行 HTML 转义。
 
 BM25 统计量对单个读取器快照（reader snapshot）全局计算，且只包含存活文档。
-Top-K 收集器只保留 K 个命中对象，同时仍报告完整命中总数。这只是内存占用边界，
-并不代表搜索管线是 O(K)：当前搜索器会在收集之前为每一个匹配项读取存储字段并计算高亮。
+受支持的 rewrite 后 term/Boolean 树通过 DAAT 游标把 doc ID 与分数流式送入
+Top-K collector；搜索器随后只为最终 K 个胜者读取 stored fields 与计算高亮，
+同时仍报告完整命中总数。Phrase 查询会显式回退到保留的集合/scoring oracle。
 
 ## Flush、refresh 与 commit
 
@@ -116,7 +117,8 @@ V1 支持：
 - 带字段的 Unicode 文档与存储字段检索；
 - 标准分析和关键词分析；
 - 词项、布尔、短语、前缀和匹配全部查询；
-- 全局 BM25、字段提升（field boost）和确定性的有界 Top-K；
+- DAAT term/Boolean 执行、全局 BM25、字段提升、确定性的有界 Top-K，以及
+  collect-then-fetch 结果物化；
 - 带校验和的确定性教学段文件；
 - 原子提交、重启恢复、NRT 刷新、删除、更新与合并；
 - 查询解析、安全高亮、相关性指标、夹具（fixtures）与本地 CLI。
@@ -125,21 +127,25 @@ V1 明确排除：
 
 - TCP、HTTP、RESP 或远程客户端兼容性；
 - 复制、心跳、选举、集群与分片；
-- Apache Lucene 编解码器、FST/BlockTree、WAND、SIMD 或生产调优；
-- 文档一次迭代器（doc-at-a-time iterator，包括 `PostingsEnum`、合取/析取
-  评分器和两阶段迭代）；匹配与评分会物化完整集合或映射；
+- Apache Lucene 编解码器、FST/BlockTree、skip list、WAND、MaxScore、SIMD
+  或生产调优；
+- phrase 两阶段迭代；包含 phrase 的查询树仍通过保留的 oracle fallback
+  物化完整集合/映射；
 - 数值/日期字段、文档值（doc values）、范围查询、字段排序、聚合与分面；
 - 向量字段、HNSW、混合检索与自动合并调度；
-- 课程章节或教学内容。
+- 生产规模查询执行与性能保证。
 
 ## 与 Apache Lucene 的重要差异
 
 有些边界不仅仅是缺少优化：
 
-- **有意简化（Intentionally simplified）：** 搜索采用完整集合代数，而不是
-  文档一次迭代。`PostingsEnum`、`ConjunctionScorer` 以及相关的游标/跳跃机制均不存在。
-- **语义相反（Semantics reversed）：** 在 Top-K 收集之前，会为每个匹配项生成
-  存储字段和高亮。Lucene 通常先收集文档 ID/分数，再只提取胜出命中的内容。
+- **有意简化（Intentionally simplified）：** 已有 DAAT posting、合取、析取和
+  排除游标，但 `advance()` 仍为线性，也没有 skip list、per-leaf scorer、
+  WAND/MaxScore 或 block-max 剪枝。
+- **有意简化（Intentionally simplified）：** 含 phrase 的查询树回退原有完整
+  集合 oracle；尚未实现位置 two-phase iteration。
+- **方向等价（Equivalent direction）：** 搜索先收集 doc ID/score，再只为
+  Top-K 胜者提取 stored fields/highlights。
 - **语义相反（Semantics reversed）：** 短语匹配的得分是其各词项 BM25 分数之和，
   而不是由短语频率计算。
 - **语义相反（Semantics reversed）：** BM25 统计量会立即排除已删除文档。
@@ -157,7 +163,7 @@ V1 明确排除：
 逐模块的 **等价（Equivalent）/ 有意简化（Intentionally simplified）/
 语义相反（Semantics reversed）** 对照表。
 
-课程将在本参考项目通过验收后另行设计。
+双语十一章课程从[教材目录](docs/zh/tutorial/index.md)开始。
 
 ## 开发
 

@@ -5,22 +5,21 @@
 By the end of this chapter, you will be able to:
 
 1. compute the four inputs MiniLucene uses for a BM25 term contribution;
-2. trace matching, scoring, stored-field loading, and Top-K collection;
+2. trace DAAT matching/scoring, Top-K collection, and late stored-field fetch;
 3. explain deterministic tie-breaking and why `top_k=0` still counts matches;
-4. identify the current phrase-scoring and collect-then-fetch deviations from Apache Lucene; and
+4. identify the current phrase-scoring and DAAT fallback boundaries; and
 5. verify that deleted documents do not contribute to MiniLucene corpus statistics.
 
 ## 1. Matching and scoring are separate stages
 
 A query first decides *which* documents are eligible and then assigns scores.
-`src/minilucene/search/scorer.py`, `score_query()` begins with
-`match_query(reader, query)`, which materializes a complete `set[int]` of
-candidate snapshot document IDs. This is a correctness-friendly teaching
-boundary: Boolean and phrase logic can be understood independently from
-ranking.
+`src/minilucene/search/scorer.py`, `iter_scored_docs()`, compiles rewritten
+term, match-all, and Boolean trees into DAAT scorer cursors. It yields one
+`(doc_id, score)` at a time. The preserved `score_query()` path begins with a
+complete `set[int]` from `match_query()`; it is now the correctness oracle and
+whole-tree fallback for phrase or unrevised-prefix leaves.
 
-For a `TermQuery`, `score_query()` calls `_term_scores()`. For each live
-posting it reads:
+For a `TermQuery`, both the DAAT term scorer and oracle `_term_scores()` read:
 
 - `tf`: term frequency in this document and field;
 - `df`: live document frequency for this field and term;
@@ -81,7 +80,7 @@ or approximate scores under frozen inputs; they do not assign a universal
 
 ## 3. Composite scores
 
-`src/minilucene/search/scorer.py`, `score_query()` follows the closed query AST:
+The DAAT nodes and preserved `score_query()` follow the same closed query AST:
 
 - a term receives one BM25 contribution;
 - a prefix is normally rewritten first, then matching expanded terms
@@ -135,36 +134,30 @@ statistics, yet equal-scoring documents can receive new dense local IDs. A
 product requiring stable business order needs an explicit sort key; field
 sorting itself is outside V1.
 
-## 5. The important collect-then-fetch deviation
+## 5. Collect first, fetch winners second
 
-It is tempting to conclude that an `O(K)` heap makes the whole search path
-`O(K)`. The source says otherwise.
+`src/minilucene/search/searcher.py`, `IndexSearcher.search()`, now separates
+query execution from result materialization.
 
-`src/minilucene/search/searcher.py`, `IndexSearcher.search()` first rewrites
-the query and calls `score_query()`, which materializes a complete score
-dictionary. It then loops over every scored document. Before calling
-`collector.collect()`, it resolves the address, loads stored fields, and calls
-`highlight_document()`.
+The first phase rewrites the query, consumes `iter_scored_docs()`, resolves
+each lightweight address, and offers score/doc identity to `TopKCollector`.
+The second phase asks for the ordered winning candidates and only then calls
+`stored_fields()` and `highlight_document()`.
 
 ```text
 MiniLucene
-complete match set → complete score dict
-→ fetch stored fields/highlight every match → Top-K heap
-
-typical Lucene direction
-postings iterators/scorers → collect top doc IDs and scores
+postings iterators/scorers → collect Top-K doc IDs and scores
 → fetch stored fields/highlight only winners
 ```
 
-Thus MiniLucene retains only K `SearchHit` objects, but matching and scoring
-use memory proportional to all matches, and stored-field/highlighting work is
-performed for all matches. It has no document-at-a-time iterator, postings
-skips, block-max WAND, two-phase iterator, leaf collector, or late fetch stage.
+Thus stored-field and highlighting work is bounded by K, and `top_k=0`
+performs none. This does not make all search work `O(K)`: every DAAT match is
+still scored, phrase-containing trees use the complete set/dictionary
+fallback, and there are no postings skips, block-max WAND, two-phase phrase
+iterator, or leaf collector.
 
-This is not a minor optimization disclaimer; it is the current execution
-architecture. The behavior matrix promises [bounded Top-K](../behavior-matrix.md)
-retention, not an `O(K)` query engine. The mapping's query-execution warning
-records the deviation explicitly.
+Chapter 11 traces the cursor algorithms and reports the executable
+`10 matched / 3 fetched` and `4 matched / 0 fetched` observations.
 
 ## 6. Contrast with Apache Lucene
 
@@ -175,11 +168,11 @@ tie policies.
 
 Several production details do not transfer directly:
 
-- Apache Lucene scores over leaf readers using iterator-based `Scorer`
-  implementations rather than complete Python sets and dictionaries.
+- MiniLucene now transfers the basic iterator/scorer direction, but uses one
+  global educational reader instead of Lucene leaf scorers.
 - Lucene can skip noncompetitive postings and use optimized conjunction,
   disjunction, two-phase, and top-score collection machinery.
-- Lucene usually fetches stored fields after collecting winning doc IDs.
+- Both now fetch stored fields after collecting winning doc IDs.
 - Deleted documents can remain in Lucene's segment statistics until merge;
   MiniLucene excludes them immediately.
 - MiniLucene phrase scoring sums term scores rather than phrase frequency.
@@ -276,36 +269,33 @@ Why does `TopKCollector.max_retained <= K` not prove that search memory is
 
 ??? note "Reference answer"
 
-    `score_query()` already materializes a complete candidate set and score
-    dictionary. The collector bounds only retained `SearchHit` objects, not
-    matching or scoring state. `IndexSearcher.search()` also fetches and
-    highlights every match before heap admission.
+    The collector bounds retained candidates and late hit materialization, not
+    query work. DAAT still scores every matching doc; a phrase-containing tree
+    also falls back to complete candidate and score collections. Skip/WAND
+    pruning is absent.
 
 ### Exercise 3 — hands-on code change
 
-Do not edit `src/`. Copy `src/minilucene/search/searcher.py` to a scratch
-directory and sketch a two-phase “collect addresses, then fetch winners”
-variant. List which collector return type would need to change.
+Do not edit `src/`. Copy the collect-then-fetch contract test to a scratch
+directory and extend its counting reader to record `address()` calls as well
+as `stored_fields()` calls.
 
-Acceptance: the scratch diff must avoid `stored_fields()` and
-`highlight_document()` before Top-K selection, preserve `total_hits`, and
-describe how winner addresses are converted to final `SearchHit` objects.
+Acceptance: for ten matching docs and `top_k=3`, observe ten address resolutions
+but only three stored-field fetches. For `top_k=0`, preserve `total_hits=10`
+and observe zero fetches.
 
 ??? note "Reference answer"
 
-    The first phase can collect lightweight `(score, segment_generation,
-    local_doc_id, snapshot_doc_id)` records. After `top_docs()` identifies
-    winners, a second phase resolves stored fields and highlights only those
-    records. The collector should return lightweight scored addresses rather
-    than the current fully materialized `SearchHit`; the public `TopDocs` can
-    still be assembled after fetch.
+    Address resolution belongs to phase one because deterministic Top-K ties
+    use segment/local identity. Stored fields and highlights belong to phase
+    two and therefore follow the retained-candidate count, not total hits.
 
 ## Summary
 
 MiniLucene separates match eligibility from BM25 contributions, freezes
 live-only statistics, and uses a deterministic heap to retain at most K hits.
-That heap does not change the current full-materialization architecture:
-scores, stored fields, and highlights are produced for every match, and phrase
-scores sum term evidence rather than phrase frequency. The next chapter moves
-one stage earlier and examines how text becomes the closed query AST that this
-scorer accepts.
+Supported term/Boolean trees score through DAAT and stored fields/highlights
+are produced only for winners. Phrase trees still use the full-materialization
+oracle, and phrase scores sum term evidence rather than phrase frequency.
+Chapter 9 moves one stage earlier to the query AST; Chapter 11 expands the
+iterator execution model.

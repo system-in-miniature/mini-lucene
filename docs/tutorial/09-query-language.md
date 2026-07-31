@@ -33,7 +33,7 @@ source string
   → field analyzer: searchable terms and phrase positions
   → closed Query AST
   → reader.rewrite(): bounded multi-term expansion
-  → matching and scoring
+  → DAAT matching/scoring or explicit oracle fallback
 ```
 
 Parsing and rewriting are separate. `kaf*` first becomes a `PrefixQuery`; only
@@ -162,9 +162,9 @@ query meaning according to dictionary order. Fail-fast makes cost and
 correctness visible to the caller.
 
 `IndexReader.rewrite()` in `src/minilucene/reader.py` supplies a default limit
-of 1024. The limit bounds expansion size, not the total cost of MiniLucene
-search after expansion: matching and scoring still materialize complete
-collections as described in Chapter 8.
+of 1024. The limit bounds expansion size, not total search cost. Expanded
+term/Boolean trees execute through DAAT, but every match is still scored and
+the system has no WAND/MaxScore pruning. See [Chapter 11](11-daat.md).
 
 ## 6. Contrast with Apache Lucene
 
@@ -311,6 +311,5 @@ scratch tests outside the repository source tree.
 MiniLucene turns text into an offset-preserving token stream, applies fixed
 recursive-descent precedence, analyzes terms by field, and emits a closed AST.
 Reader-dependent prefix rewrite is a later, bounded stage that fails rather
-than truncating semantics. The final chapter follows one more lifecycle
-operation—explicit merge—and uses the project's deliberate omissions to form
-a roadmap toward real Lucene.
+than truncating semantics. Chapter 10 follows explicit merge; Chapter 11 then
+returns to the rewritten AST and executes it through DAAT cursors.

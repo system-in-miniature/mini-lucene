@@ -32,8 +32,9 @@ MiniLucene mental model into real Lucene would be wrong.
 | **Intentionally simplified** | `reader.py` (`IndexReader`) and `snapshot.py` | `DirectoryReader`, leaf readers, and point-in-time reader snapshots | A reader freezes a segment/live-doc view and remains unchanged after later refreshes. MiniLucene eagerly materializes segment images and has no shared `SegmentReader`/core cache. |
 | **Intentionally simplified** | `search/reader.py` (`ReaderView`) | low-level leaf/composite reader access used by search | It translates global doc IDs, exposes postings/stored fields, and builds corpus statistics, but it is an internal query-facing view rather than a public lifecycle owner. |
 | **Semantics reversed** | live-only corpus statistics in `search/reader.py` | Lucene term statistics before merge | MiniLucene excludes deleted documents from `docFreq`, document count, and average lengths immediately. Lucene's segment statistics still include deleted documents until merge, so merge can change scores in real Lucene; MiniLucene erases that phenomenon. |
-| **Intentionally simplified** | `query/match.py` and `search/scorer.py` | `PostingsEnum`, `DocIdSetIterator`, `Scorer`, `ConjunctionScorer`, `DisjunctionScorer`, and two-phase iteration | MiniLucene materializes complete `set[int]` matches and `dict[int, float]` scores. It has no doc-at-a-time cursors, postings skipping, conjunction/disjunction merge, or two-phase iterator. |
-| **Semantics reversed** | `search/searcher.py` plus `search/collector.py` | `IndexSearcher`, `Collector`/`LeafCollector`, `TopScoreDocCollector`, then stored-field/highlight fetch | MiniLucene loads stored fields and computes highlights for every match before offering it to the Top-K heap. Lucene normally collects doc ID/score first and fetches expensive hit content only for the winners. MiniLucene retains only O(K) hit objects, but its stored-field I/O and highlighting work remain O(total hits). |
+| **Intentionally simplified** | `search/iterators.py` and DAAT nodes in `search/scorer.py` | `PostingsEnum`, `DocIdSetIterator`, `ConjunctionDISI`, `DisjunctionDISIApproximation`, and `ReqExclScorer` | Rewritten term/match-all/Boolean trees stream through posting, zipper-conjunction, heap-disjunction, and exclusion cursors. `advance()` is linear because the codec has no skip data; there are no per-leaf scorers, impacts, WAND/MaxScore, or block-max pruning. |
+| **Intentionally simplified** | `query/match.py` and `score_query()` in `search/scorer.py` | scorer correctness oracle and unmigrated query execution | The complete `set[int]`/`dict[int, float]` implementation is deliberately retained for differential tests and whole-tree fallback. Phrase-containing trees still use it because positional two-phase iteration has not migrated. |
+| **Equivalent** | `search/searcher.py` plus `search/collector.py` | `IndexSearcher`, `Collector`/`LeafCollector`, `TopScoreDocCollector`, then stored-field/highlight fetch | MiniLucene collects lightweight doc IDs/scores into Top-K first, then reads stored fields and computes highlights only for final winners. It uses one global educational reader rather than Lucene's leaf collector model. |
 | **Semantics reversed** | phrase branch in `search/scorer.py` | `PhraseQuery`, phrase matcher, phrase frequency, and similarity scoring | MiniLucene first verifies adjacency, then sums BM25 contributions of the component terms. Lucene scores using phrase frequency; repeated phrases and scattered term frequency therefore rank differently. |
 | **Intentionally simplified** | `query/model.py`, `query_parser/`, and `search/rewrite.py` | Lucene `Query` subclasses, query parser, and multi-term query rewrite | Term, boolean, exact phrase, prefix, and match-all queries form a closed teaching AST. Phrase slop, fuzzy/wildcard/regex queries, numeric/range queries, and most rewrite strategies are absent. |
 | **Semantics reversed** | `boost` on `FieldType` in `schema.py` | query-time boosts such as `BoostQuery` | MiniLucene fixes boost in the schema and applies it while scoring every query. Lucene 7.0 removed index-time field boosts and retains query-time boost, so the supported direction is the opposite. |
@@ -42,21 +43,21 @@ MiniLucene mental model into real Lucene would be wrong.
 | **Intentionally simplified** | `highlight.py` | Lucene highlighters using postings offsets, term vectors, or re-analysis | MiniLucene re-analyzes stored text. Consequently an indexed-but-not-stored field cannot be highlighted, even though real Lucene can be configured with offsets or term vectors for highlighting. |
 | **Intentionally simplified** | `.writer.lock` in `writer.py` | Lucene `LockFactory`/`NativeFSLockFactory` and `IndexWriter` write lock | `O_EXCL` prevents two writers, but a crash leaves the file behind permanently. The PID is informational only; there is no stale-lock validation or force-unlock API. |
 
-## Query-execution warning
+## Query-execution boundary
 
-The most important gap is not merely the absence of WAND or SIMD. MiniLucene
-does not contain a doc-at-a-time execution path at all:
+MiniLucene now has a doc-at-a-time path for rewritten term, match-all, and
+Boolean trees:
 
 ```text
-MiniLucene: postings → complete sets → complete score dictionary
-Lucene:     postings cursors → scorer iteration → collector → top doc IDs
-                                                       ↓
-                                            stored fields/highlighting
+MiniLucene: posting cursors → iterator/scorer tree → collector → top doc IDs
+                                                            ↓
+                                                 stored fields/highlighting
 ```
 
-`TopKCollector` does bound the number of retained hit objects to K. It does
-not make the current search path O(K): `IndexSearcher.search` reads stored
-fields and highlights every matching document before the heap can discard it.
+The searcher performs collect-then-fetch, so stored-field reads and highlighting
+are bounded by K. Query execution is not generally O(K): every DAAT match is
+still scored, phrase-containing trees fall back to complete sets/maps, and
+MiniLucene has no skip data, two-phase phrase iterator, WAND, or MaxScore.
 
 ## Other boundaries readers should know
 

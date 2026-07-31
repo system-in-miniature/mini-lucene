@@ -96,8 +96,9 @@ posting 和 generation。两条入口共用同一实现。API 拼写与 Lucene �
 段元数据、查询执行、合并调度与兼容承诺复杂得多。
 
 MiniLucene 的 JSON CLI 只是本地适配器；Schema 在建库时冻结；文件格式仅供教学；
-没有 TCP/HTTP 服务，也没有数值字段、doc values、范围查询、分面、向量检索、
-自动 merge 调度或 Lucene 的 DAAT 迭代器栈。请查阅仓内
+没有 TCP/HTTP 服务，也没有数值字段、doc values、范围查询、分面、向量检索或
+自动 merge 调度。它已有教学用 DAAT 游标，但没有 Lucene 的 skip、WAND、
+MaxScore 与 per-leaf 优化栈。请查阅仓内
 [MiniLucene → Lucene 映射](../../lucene-mapping.md)与
 [可执行行为矩阵](../../behavior-matrix.md)。这些是明确的边界，不是项目名暗示
 已经支持的能力。

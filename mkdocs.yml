@@ -33,6 +33,7 @@ nav:
       - 08 · Scoring and Top-K: tutorial/08-scoring.md
       - 09 · The Query Language: tutorial/09-query-language.md
       - 10 · Merge and Beyond: tutorial/10-merge-and-beyond.md
+      - 11 · Doc-at-a-Time Execution: tutorial/11-daat.md
   - 中文教程:
       - 全书目录: zh/tutorial/index.md
       - 01 · 认识 MiniLucene: zh/tutorial/01-getting-started.md
@@ -45,6 +46,7 @@ nav:
       - 08 · 打分与 Top-K: zh/tutorial/08-scoring.md
       - 09 · 查询语言: zh/tutorial/09-query-language.md
       - 10 · 合并与方法论: zh/tutorial/10-merge-and-beyond.md
+      - 11 · 文档一次查询执行: zh/tutorial/11-daat.md
   - Reference:
       - English overview: index.md
       - Architecture:

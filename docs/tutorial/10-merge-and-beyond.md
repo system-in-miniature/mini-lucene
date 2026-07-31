@@ -7,7 +7,7 @@ By the end of this chapter, you will be able to:
 1. explain why merging rewrites selected immutable segments instead of concatenating files;
 2. trace live-document filtering, dense document-ID remapping, and writer-set replacement;
 3. distinguish successful merge publication from durable commit and garbage collection;
-4. explain why MiniLucene has no automatic merge policy, background scheduler, or DAAT search; and
+4. explain the remaining automatic-merge and post-DAAT optimization gaps; and
 5. use the project's gaps as a concrete reading roadmap into Apache Lucene.
 
 ## 1. Why merge exists
@@ -148,30 +148,29 @@ failure, segment ownership, and “no automatic merge scheduler” rows define t
 implemented boundary. The [MiniLucene-to-Lucene mapping](../lucene-mapping.md)
 names `MergePolicy` and `MergeScheduler` as production counterparts.
 
-## 7. The next major gap: document-at-a-time execution
+## 7. The next query-execution gaps
 
-Merge is only one path forward. MiniLucene's current query engine materializes
-complete match sets and score dictionaries. Apache Lucene advances postings
-iterators in document order, composes scorers, and streams competitive hits
-into collectors. This document-at-a-time (DAAT) design enables postings skips,
-specialized conjunction/disjunction execution, two-phase matching, and
-competitive-score pruning.
+Merge is only one path forward. MiniLucene now advances postings in document
+order, composes term/Boolean scorers, streams matches into Top-K, and fetches
+stored content only for winners. [Chapter 11](11-daat.md) implements and tests
+that DAAT slice. Phrase trees still fall back to complete sets and score
+dictionaries, and the cursor layer has no skip data or competitive-score
+pruning.
 
 A useful progression beyond this repository is:
 
 ```text
-current ReaderView.postings() tuples
-  → a PostingsEnum-like next_doc()/advance() cursor
-  → conjunction and disjunction iterators
-  → scorer iteration into a lightweight collector
-  → fetch stored fields only for winners
+current linear PostingsIterator.advance()
+  → encoded skip data and block-aware advance
+  → phrase approximation + positional confirmation
+  → per-leaf scorer/collector execution
   → block-max metadata and competitive skipping
 ```
 
-Do not begin with WAND. First replace full-set ownership with a precise cursor
-lifecycle and preserve query semantics. Then measure. The current bounded
-`TopKCollector` can inspire the collector interface, but Chapter 8 showed that
-it does not by itself create DAAT execution.
+Do not jump directly to WAND. First migrate phrase matching without changing
+its frozen score semantics, add observable cursor statistics, and measure
+whether skipping metadata helps the actual corpus. Keep differential tests
+against the preserved set oracle at every step.
 
 ## 8. A practical route into real Lucene
 
@@ -321,25 +320,23 @@ generations.
 
 ### Exercise 4 — roadmap
 
-Choose DAAT execution or automatic merge scheduling as a next subsystem.
-Write a one-page design with an invariant, a minimal API, a failure boundary,
-and an executable acceptance test.
+Choose phrase two-phase iteration or automatic merge scheduling as a next
+subsystem. Write a one-page design with an invariant, a minimal API, a failure
+boundary, and an executable acceptance test.
 
 ??? note "Reference answer"
 
-    A DAAT design should start with a cursor whose `doc_id`, `next_doc()`, and
-    `advance(target)` lifecycle is explicit, then compare its hits and scores
-    with the current complete-set oracle. A merge-scheduler design should
-    separate deterministic selection from execution, retain writer
-    single-ownership, and inject publication failure to prove the old writer
-    set remains authoritative.
+    A phrase design can use term conjunction as approximation and positions as
+    confirmation, then compare hits and scores with the complete-set oracle. A
+    merge-scheduler design should separate deterministic selection from
+    execution, retain writer single-ownership, and inject publication failure
+    to prove the old writer set remains authoritative.
 
 ## Summary
 
 Explicit merge captures immutable segments plus exact live masks, remaps only
 live documents densely, publishes a new segment, and swaps writer state only
 after success. Commit and owner-aware garbage collection are separate later
-boundaries. MiniLucene stops before automatic `TieredMergePolicy` scheduling
-and DAAT query execution; those are not vague omissions but concrete next
-interfaces. The completed tutorial should leave you able to read real Lucene
-with sharper questions and without mistaking this educational codec for it.
+boundaries. MiniLucene stops before automatic `TieredMergePolicy`, phrase
+two-phase iteration, skip data, and competitive-score pruning. These are
+concrete next interfaces. Chapter 11 now develops the implemented DAAT base.

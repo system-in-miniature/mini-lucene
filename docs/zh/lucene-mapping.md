@@ -30,8 +30,9 @@ API。本指南将这些小型 Python 模块映射到它们旨在揭示的生产
 | **Intentionally simplified** | `reader.py` (`IndexReader`) and `snapshot.py` | `DirectoryReader`, leaf readers, and point-in-time reader snapshots | A reader freezes a segment/live-doc view and remains unchanged after later refreshes. MiniLucene eagerly materializes segment images and has no shared `SegmentReader`/core cache. |
 | **Intentionally simplified** | `search/reader.py` (`ReaderView`) | low-level leaf/composite reader access used by search | It translates global doc IDs, exposes postings/stored fields, and builds corpus statistics, but it is an internal query-facing view rather than a public lifecycle owner. |
 | **Semantics reversed** | live-only corpus statistics in `search/reader.py` | Lucene term statistics before merge | MiniLucene excludes deleted documents from `docFreq`, document count, and average lengths immediately. Lucene's segment statistics still include deleted documents until merge, so merge can change scores in real Lucene; MiniLucene erases that phenomenon. |
-| **Intentionally simplified** | `query/match.py` and `search/scorer.py` | `PostingsEnum`, `DocIdSetIterator`, `Scorer`, `ConjunctionScorer`, `DisjunctionScorer`, and two-phase iteration | MiniLucene materializes complete `set[int]` matches and `dict[int, float]` scores. It has no doc-at-a-time cursors, postings skipping, conjunction/disjunction merge, or two-phase iterator. |
-| **Semantics reversed** | `search/searcher.py` plus `search/collector.py` | `IndexSearcher`, `Collector`/`LeafCollector`, `TopScoreDocCollector`, then stored-field/highlight fetch | MiniLucene loads stored fields and computes highlights for every match before offering it to the Top-K heap. Lucene normally collects doc ID/score first and fetches expensive hit content only for the winners. MiniLucene retains only O(K) hit objects, but its stored-field I/O and highlighting work remain O(total hits). |
+| **有意简化** | `search/iterators.py` 与 `search/scorer.py` 的 DAAT 节点 | `PostingsEnum`、`DocIdSetIterator`、`ConjunctionDISI`、`DisjunctionDISIApproximation` 与 `ReqExclScorer` | rewrite 后的 term/match-all/Boolean 树通过 posting、拉链合取、堆析取与排除游标流式执行。codec 没有 skip data，所以 `advance()` 是线性的；也没有 per-leaf scorer、impacts、WAND/MaxScore 或 block-max 剪枝。 |
+| **有意简化** | `query/match.py` 与 `search/scorer.py` 的 `score_query()` | scorer 正确性 oracle 与未迁移查询执行 | 完整 `set[int]`/`dict[int, float]` 实现被有意保留，用于差分测试与整树 fallback。含 phrase 的查询树仍走该路径，因为位置 two-phase iteration 尚未迁移。 |
+| **等价** | `search/searcher.py` 与 `search/collector.py` | `IndexSearcher`、`Collector`/`LeafCollector`、`TopScoreDocCollector`，随后提取 stored fields/highlights | MiniLucene 先把轻量 doc ID/score 收进 Top-K，再只为最终胜者读取 stored fields 与计算高亮。它使用一个教学用全局 reader，而不是真实 Lucene 的 leaf collector 模型。 |
 | **Semantics reversed** | phrase branch in `search/scorer.py` | `PhraseQuery`, phrase matcher, phrase frequency, and similarity scoring | MiniLucene first verifies adjacency, then sums BM25 contributions of the component terms. Lucene scores using phrase frequency; repeated phrases and scattered term frequency therefore rank differently. |
 | **Intentionally simplified** | `query/model.py`, `query_parser/`, and `search/rewrite.py` | Lucene `Query` subclasses, query parser, and multi-term query rewrite | Term, boolean, exact phrase, prefix, and match-all queries form a closed teaching AST. Phrase slop, fuzzy/wildcard/regex queries, numeric/range queries, and most rewrite strategies are absent. |
 | **Semantics reversed** | `boost` on `FieldType` in `schema.py` | query-time boosts such as `BoostQuery` | MiniLucene fixes boost in the schema and applies it while scoring every query. Lucene 7.0 removed index-time field boosts and retains query-time boost, so the supported direction is the opposite. |
@@ -40,21 +41,21 @@ API。本指南将这些小型 Python 模块映射到它们旨在揭示的生产
 | **Intentionally simplified** | `highlight.py` | Lucene highlighters using postings offsets, term vectors, or re-analysis | MiniLucene re-analyzes stored text. Consequently an indexed-but-not-stored field cannot be highlighted, even though real Lucene can be configured with offsets or term vectors for highlighting. |
 | **Intentionally simplified** | `.writer.lock` in `writer.py` | Lucene `LockFactory`/`NativeFSLockFactory` and `IndexWriter` write lock | `O_EXCL` prevents two writers, but a crash leaves the file behind permanently. The PID is informational only; there is no stale-lock validation or force-unlock API. |
 
-## 查询执行警告
+## 查询执行边界
 
-最重要的差距不仅仅是缺少 WAND 或 SIMD。MiniLucene 根本不包含文档一次
+MiniLucene 现在为 rewrite 后的 term、match-all 与 Boolean 树提供文档一次
 （doc-at-a-time）执行路径：
 
 ```text
-MiniLucene: postings → complete sets → complete score dictionary
-Lucene:     postings cursors → scorer iteration → collector → top doc IDs
-                                                       ↓
-                                            stored fields/highlighting
+MiniLucene: posting 游标 → iterator/scorer 树 → collector → top doc IDs
+                                                          ↓
+                                               stored fields/highlighting
 ```
 
-`TopKCollector` 确实将保留的命中对象数量限制为 K，但这不会使当前搜索路径成为
-O(K)：`IndexSearcher.search` 会在堆能够丢弃匹配项之前，为每个匹配文档读取
-存储字段并计算高亮。
+搜索器执行 collect-then-fetch，因此 stored-field 读取与高亮次数受 K 限制。
+查询执行整体并非 O(K)：每个 DAAT 命中仍会打分，含 phrase 的树仍回退完整
+集合/映射，而且 MiniLucene 没有 skip data、phrase two-phase iterator、WAND
+或 MaxScore。
 
 ## 读者还应了解的其他边界
 

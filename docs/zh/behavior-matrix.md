@@ -18,7 +18,9 @@
 | 布尔查询 | `BooleanQuery` | MUST、SHOULD 和 MUST_NOT 使用固定的集合语义 | `tests/contract/test_query_matching.py::test_should_is_required_without_must_and_optional_with_must` |
 | 全匹配查询 | `MatchAllQuery` | 无需保留结果对象即可统计总命中数 | `tests/contract/test_memory_search.py::test_match_all_can_report_total_without_returning_hits` |
 | 全局 BM25 | `MemoryIndex.search`, `IndexReader.search` | TF 饱和度、IDF、长度归一化和字段加权使用同一个活跃语料库视图 | `tests/evaluation/test_reference_corpus.py::test_bm25_term_frequency_saturates_instead_of_growing_linearly` |
+| DAAT Boolean 执行 | `iter_scored_docs` | 嵌套 MUST、SHOULD、MUST_NOT 的命中与分数和保留的集合 oracle 一致 | `tests/unit/search/test_daat_scorer.py::test_daat_matches_set_oracle_for_seeded_random_corpora_and_queries` |
 | 有界 Top-K | `search(..., top_k=K)` | 收集器在统计所有匹配项的同时最多保留 K 个命中 | `tests/unit/search/test_topk.py::test_heap_topk_matches_complete_sort_oracle` |
+| 先收集后提取 | `IndexSearcher.search` | stored fields 与 highlights 只为最终 Top-K 胜者物化 | `tests/contract/test_collect_then_fetch.py::test_search_fetches_stored_fields_only_for_final_top_k` |
 | 教学分段编解码器 | `IndexWriter.flush` | 确定性不可变文件可往返还原倒排记录与存储数据 | `tests/storage/test_segment_store.py::test_segment_store_open_round_trips_image` |
 | Flush 可见性 | `IndexWriter.flush` | flush 创建分段，但不改变已提交清单 | `tests/storage/test_writer_flush.py::test_flush_creates_segment_but_does_not_change_manifest` |
 | 原子提交 | `IndexWriter.commit` | 清单替换在新旧已提交根之间二选一 | `tests/storage/test_commit_recovery.py::test_manifest_replace_failure_preserves_previous_commit` |
@@ -50,4 +52,4 @@
 | 无向量检索 | 无 | 向量字段、ANN 和混合检索仍属于 V2 工作 | `tests/contract/test_behavior_matrix.py::test_v1_source_excludes_vector_retrieval` |
 | 不兼容 Lucene 编解码器 | 无 | 文件为 MiniLucene 教学分段文件 | `tests/contract/test_behavior_matrix.py::test_v1_segment_format_disclaims_lucene_codec_compatibility` |
 | 无自动合并调度器 | 仅 `IndexWriter.merge` | 合并选择是显式且确定性的 | `tests/contract/test_behavior_matrix.py::test_v1_has_no_automatic_merge_scheduler` |
-| 课程保持独立 | 无 | 此仓库是已完成的参考项目，不是课程内容 | `tests/contract/test_behavior_matrix.py::test_v1_repository_separates_course_material` |
+| 教材与运行时分离 | `docs/tutorial/` | 教材位于文档，而不是 `course/` 或 `chapters/` 运行时目录 | `tests/contract/test_behavior_matrix.py::test_v1_repository_separates_course_material` |

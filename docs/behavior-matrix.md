@@ -19,7 +19,9 @@ not claim Apache Lucene API or file-format compatibility.
 | Boolean query | `BooleanQuery` | MUST, SHOULD, and MUST_NOT use the frozen set semantics | `tests/contract/test_query_matching.py::test_should_is_required_without_must_and_optional_with_must` |
 | Match-all query | `MatchAllQuery` | total hits can be counted without retaining result objects | `tests/contract/test_memory_search.py::test_match_all_can_report_total_without_returning_hits` |
 | Global BM25 | `MemoryIndex.search`, `IndexReader.search` | TF saturation, IDF, length norm, and field boost use one live corpus view | `tests/evaluation/test_reference_corpus.py::test_bm25_term_frequency_saturates_instead_of_growing_linearly` |
+| DAAT Boolean execution | `iter_scored_docs` | nested MUST, SHOULD, and MUST_NOT hits and scores match the preserved set oracle | `tests/unit/search/test_daat_scorer.py::test_daat_matches_set_oracle_for_seeded_random_corpora_and_queries` |
 | Bounded Top-K | `search(..., top_k=K)` | collector retains at most K hits while counting all matches | `tests/unit/search/test_topk.py::test_heap_topk_matches_complete_sort_oracle` |
+| Collect then fetch | `IndexSearcher.search` | stored fields and highlights are materialized only for final Top-K winners | `tests/contract/test_collect_then_fetch.py::test_search_fetches_stored_fields_only_for_final_top_k` |
 | Educational segment codec | `IndexWriter.flush` | deterministic immutable files round-trip postings and stored data | `tests/storage/test_segment_store.py::test_segment_store_open_round_trips_image` |
 | Flush visibility | `IndexWriter.flush` | flush creates a segment without changing the committed manifest | `tests/storage/test_writer_flush.py::test_flush_creates_segment_but_does_not_change_manifest` |
 | Atomic commit | `IndexWriter.commit` | manifest replacement chooses the old or new committed root | `tests/storage/test_commit_recovery.py::test_manifest_replace_failure_preserves_previous_commit` |
@@ -51,4 +53,4 @@ not claim Apache Lucene API or file-format compatibility.
 | No vector retrieval | none | vector fields, ANN, and hybrid retrieval remain V2 work | `tests/contract/test_behavior_matrix.py::test_v1_source_excludes_vector_retrieval` |
 | No Lucene codec compatibility | none | files are MiniLucene educational segment files | `tests/contract/test_behavior_matrix.py::test_v1_segment_format_disclaims_lucene_codec_compatibility` |
 | No automatic merge scheduler | `IndexWriter.merge` only | merge selection is explicit and deterministic | `tests/contract/test_behavior_matrix.py::test_v1_has_no_automatic_merge_scheduler` |
-| Course remains separate | none | this repository is the completed reference project, not course content | `tests/contract/test_behavior_matrix.py::test_v1_repository_separates_course_material` |
+| Tutorial/runtime separation | `docs/tutorial/` | lessons stay in documentation rather than a `course/` or `chapters/` runtime tree | `tests/contract/test_behavior_matrix.py::test_v1_repository_separates_course_material` |

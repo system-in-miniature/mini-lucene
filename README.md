@@ -76,12 +76,12 @@ atomically published restart root
 
 query text → lexer → parser → Query AST → prefix rewrite
                                           ↓
-                          matching → global BM25
+                          DAAT cursors → global BM25
+                                          ↓
+                                  Top-K heap
                                           ↓
                          stored fields + highlighting
-                           for every matching document
-                                          ↓
-                                      Top-K heap
+                              for final winners only
 ```
 
 `TextField` is tokenized and positional. `KeywordField` indexes the complete
@@ -94,10 +94,11 @@ separated in the original text. Highlighting re-analyzes stored `TextField`
 values, uses those offsets, and HTML-escapes all original text.
 
 BM25 statistics are global to one reader snapshot and include only live
-documents. The Top-K collector retains only K hit objects while still
-reporting the complete hit count. This is an in-memory bound, not an O(K)
-search pipeline: the current searcher reads stored fields and computes
-highlights for every match before collection.
+documents. Supported rewritten term/Boolean trees stream doc IDs and scores
+through DAAT cursors into a Top-K collector. The searcher then reads stored
+fields and computes highlights only for the final K winners while still
+reporting the complete hit count. Phrase queries explicitly fall back to the
+preserved set/scoring oracle.
 
 ## Flush, refresh, and commit
 
@@ -125,7 +126,8 @@ V1 supports:
 - fielded Unicode documents and stored-field retrieval;
 - standard and keyword analysis;
 - term, boolean, phrase, prefix, and match-all queries;
-- global BM25, field boost, deterministic bounded Top-K;
+- DAAT term/Boolean execution, global BM25, field boost, deterministic
+  bounded Top-K, and collect-then-fetch result materialization;
 - deterministic educational segment files with checksums;
 - atomic commit, restart recovery, NRT refresh, delete, update, and merge;
 - query parsing, safe highlighting, relevance metrics, fixtures, and local CLI.
@@ -134,25 +136,26 @@ V1 deliberately excludes:
 
 - TCP, HTTP, RESP, or remote-client compatibility;
 - replication, heartbeats, elections, clustering, and sharding;
-- Apache Lucene codecs, FST/BlockTree, WAND, SIMD, or production tuning;
-- doc-at-a-time iterators (`PostingsEnum`, conjunction/disjunction scorers,
-  and two-phase iteration); matching and scoring materialize full sets/maps;
+- Apache Lucene codecs, FST/BlockTree, skip lists, WAND, MaxScore, SIMD, or
+  production tuning;
+- two-phase phrase iteration; phrase-containing trees still materialize full
+  sets/maps through the preserved oracle fallback;
 - numeric/date fields, doc values, range queries, field sorting, aggregation,
   and faceting;
 - vector fields, HNSW, hybrid retrieval, and automatic merge scheduling;
-- course chapters or lesson content.
+- production-scale query execution and performance guarantees.
 
 ## Important differences from Apache Lucene
 
 Several boundaries are more than missing optimizations:
 
-- **Intentionally simplified:** Search is full-set algebra, not doc-at-a-time
-  iteration. `PostingsEnum`,
-  `ConjunctionScorer`, and related cursor/skip machinery do not exist.
-- **Semantics reversed:** Stored fields and highlights are produced for every
-  match before Top-K
-  collection. Lucene normally collects doc IDs/scores first and fetches only
-  the winning hits.
+- **Intentionally simplified:** DAAT posting, conjunction, disjunction, and
+  exclusion cursors are present, but `advance()` is linear and there are no
+  skip lists, per-leaf scorers, WAND/MaxScore, or block-max pruning.
+- **Intentionally simplified:** Phrase-containing trees fall back to the
+  original full-set oracle; positional two-phase iteration is not implemented.
+- **Equivalent direction:** Search collects doc IDs/scores first and fetches
+  stored fields/highlights only for Top-K winners.
 - **Semantics reversed:** Phrase matches are scored as the sum of their terms'
   BM25 scores, not from phrase frequency.
 - **Semantics reversed:** BM25 statistics exclude deleted documents
@@ -173,8 +176,8 @@ See [MiniLucene → Apache Lucene mapping](docs/lucene-mapping.md) for the
 module-by-module **Equivalent / Intentionally simplified / Semantics
 reversed** table.
 
-The course will be designed separately after this reference project is
-accepted.
+The bilingual eleven-chapter course starts at
+[the tutorial contents](docs/tutorial/index.md).
 
 ## Development
 

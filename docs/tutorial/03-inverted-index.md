@@ -108,11 +108,13 @@ the schema field boost. `TopKCollector.collect` in
 deterministic tie-breaking while still incrementing the complete hit count.
 Thus `total_hits` may exceed `len(hits)`.
 
-That memory bound must not be overstated. The current
-`IndexSearcher.search` materializes matching maps and constructs stored
-fields/highlights before collection. It does not implement document-at-a-time
-iterators, skipping, WAND, or collect-then-fetch. “Top-K heap is bounded” is
-true; “the whole search uses O(K) memory and work” is false.
+That memory bound must not be overstated. `IndexSearcher.search` now streams
+supported term/Boolean trees through DAAT cursors and performs
+collect-then-fetch, so stored fields/highlights are built only for final
+winners. Phrase-containing trees still fall back to complete matching maps,
+and there is no skip data, WAND, or competitive-score pruning. “Top-K hit
+materialization is bounded” is true; “all query work is O(K)” is false.
+[Chapter 11](11-daat.md) develops this boundary.
 
 ### Immutability as a simplifying boundary
 
@@ -128,9 +130,9 @@ Inversion moves work from query time to index time. Adding a document analyzes
 all indexed fields and updates one posting list per distinct term. A term query
 then reaches candidates through a dictionary lookup instead of reading every
 stored document. Phrase queries intersect candidate postings and inspect
-positions; Boolean queries combine candidate sets. This beats a full document
-scan for selective terms, but the Python matcher still materializes
-intermediate sets and score maps.
+positions; Boolean queries combine ordered cursors. This beats a full document
+scan for selective terms. Phrase currently uses the preserved set/map oracle
+fallback, while rewritten term/Boolean trees execute DAAT.
 
 Ordering is part of reproducibility. `RamIndexBuilder.freeze` sorts fields and
 terms before wrapping them in read-only mappings. Documents follow insertion
@@ -157,8 +159,8 @@ Apache Lucene also indexes fields into term dictionaries, postings, frequencies,
 positions, norms, and stored fields. Its concrete implementation is much more
 compressed and optimized: BlockTree terms dictionaries, specialized postings
 formats, skip data, packed integers, impacts, doc values, and iterator APIs such
-as `TermsEnum` and `PostingsEnum`. Query execution advances ordered iterators
-instead of materializing Python sets and dictionaries.
+as `TermsEnum` and `PostingsEnum`. MiniLucene now transfers the basic ordered
+iterator model but not these production data structures or optimizations.
 
 MiniLucene's mappings and tuples prioritize inspectability. It has no FST,
 BlockTree, skip lists, impacts, WAND, doc values, numeric points, payloads, or

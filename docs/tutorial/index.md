@@ -1,6 +1,6 @@
 # MiniLucene Tutorial
 
-This ten-chapter book follows one lexical-search system from text analysis to
+This eleven-chapter book follows one lexical-search system from text analysis to
 immutable storage, NRT visibility, scoring, query parsing, and merge. Read in
 order for the full mechanism chain; every chapter includes source anchors,
 measured experiments, Lucene differences, and exercises with folded answers.
@@ -15,6 +15,7 @@ measured experiments, Lucene differences, and exercises with folded answers.
 8. [Scoring and Top-K](08-scoring.md)
 9. [The Query Language](09-query-language.md)
 10. [Merge and Beyond](10-merge-and-beyond.md)
+11. [Doc-at-a-Time Query Execution](11-daat.md)
 
 Use the [behavior matrix](../behavior-matrix.md) as the executable contract and
 the [MiniLucene-to-Lucene mapping](../lucene-mapping.md) when comparing the

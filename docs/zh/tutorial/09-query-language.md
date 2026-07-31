@@ -28,7 +28,7 @@ Boolean 查询。parser 无法制造任意可执行代码或未知查询子类�
   → 字段 analyzer：可搜索词项和 phrase positions
   → 封闭 Query AST
   → reader.rewrite()：有界 multi-term 展开
-  → 匹配与打分
+  → DAAT 匹配/打分或显式 oracle fallback
 ```
 
 解析与 rewrite 分离。`kaf*` 先变成 `PrefixQuery`；只有 reader 快照知道当前有哪些索引词项以 `kaf` 开头。
@@ -112,7 +112,10 @@ prefix 必须恰好分析成一个 token。`title:KAF*` 变成规范化的
 `max_terms` 必须是正整数。如果填满上限后仍存在下一个匹配词项，
 `_expand_prefix()` 会抛出 `TooManyTermsError`，不会截断。截断会根据字典顺序静默改变查询含义。立即失败把成本和正确性暴露给调用者。
 
-`src/minilucene/reader.py` 的 `IndexReader.rewrite()` 提供默认上限 1024。该上限限制展开大小，不限制展开后整个 MiniLucene 搜索成本；如第 8 章所述，匹配与打分仍物化完整集合。
+`src/minilucene/reader.py` 的 `IndexReader.rewrite()` 提供默认上限 1024。
+该上限限制展开大小，不限制全部搜索成本。展开后的 term/Boolean 树执行 DAAT，
+但每个命中仍会打分，而且系统没有 WAND/MaxScore 剪枝。参见
+[第 11 章](11-daat.md)。
 
 ## 6. 与 Apache Lucene 对照
 
@@ -232,4 +235,7 @@ UV_CACHE_DIR=/tmp/minilucene-uv-cache uv run pytest tests/contract/test_prefix_r
 
 ## 小结
 
-MiniLucene 把文本转成保留 offset 的 token 流，应用固定递归下降优先级，按字段分析词项，并产生封闭 AST。依赖 reader 的 prefix rewrite 是更晚的有界阶段；它在超限时失败，而不是截断语义。最后一章将跟随另一个生命周期操作——显式 merge——并用项目有意省略的机制形成通往真实 Lucene 的路线图。
+MiniLucene 把文本转成保留 offset 的 token 流，应用固定递归下降优先级，按字段分析
+词项，并产生封闭 AST。依赖 reader 的 prefix rewrite 是更晚的有界阶段；它在超限时
+失败，而不是截断语义。第 10 章跟踪显式 merge；第 11 章再回到 rewrite 后的 AST，
+用 DAAT 游标执行它。
