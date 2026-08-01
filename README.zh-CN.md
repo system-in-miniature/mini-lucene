@@ -13,6 +13,14 @@ index）、BM25、有界 Top-K 收集、不可变磁盘段、时点读取器
 本项目有意不做 Apache Lucene 的克隆。它不承诺兼容 Lucene API 或文件格式，
 也不提供生产级性能、网络服务、分布式协调或向量检索。
 
+## 学习模式
+
+- **机制教程**——通过[双语十一章教程](docs/zh/tutorial/index.md)学习概念与运行路径。
+- **自主重建**——通过三十个可独立浏览的 Stage 重建 MiniLucene，每节包含失败证据与
+  按机制分组的 Diff，入口见[重建旅程](docs/zh/journey/index.md)。
+- **Agent 带教**——让 Codex 在终端中互动讲解、实现并验收一个 Stage，使用方式见
+  [CLI 教程](docs/zh/agent-guide.md)。
+
 ## 快速开始
 
 ```python

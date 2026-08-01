@@ -14,6 +14,16 @@ The project is intentionally not a clone of Apache Lucene. It does not promise
 Lucene API or file-format compatibility, production performance, network
 serving, distributed coordination, or vector retrieval.
 
+## Learning modes
+
+- **Mechanism Tutorial** — study the concepts and runtime paths through the
+  [bilingual eleven-chapter tutorial](docs/tutorial/index.md).
+- **Self-Guided Rebuild** — rebuild MiniLucene through thirty independently
+  browsable Stages with failure evidence and grouped diffs in the
+  [Journey](docs/journey/index.md).
+- **Agent-Guided Rebuild** — ask Codex to guide, implement, explain, and verify
+  one Stage interactively; see the short [CLI usage guide](docs/agent-guide.md).
+
 ## Quickstart
 
 ```python

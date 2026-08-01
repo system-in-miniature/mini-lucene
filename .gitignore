@@ -1,4 +1,5 @@
 .venv/
+.journey-workspaces/
 __pycache__/
 *.py[cod]
 .pytest_cache/

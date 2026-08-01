@@ -1,0 +1,530 @@
+# Stage 26 · 基于 Offset 的 Highlight
+
+### 目标
+
+实现基于 Offset 的 Highlight，并能从可执行反例、运行时状态与关键语句解释其边界。
+
+??? note "交付文件"
+    - `src/minilucene/highlight.py`
+    - `src/minilucene/reader.py`
+    - `src/minilucene/search/collector.py`
+    - `src/minilucene/search/searcher.py`
+    - `tests/contract/test_highlighting.py`
+
+### 当前遇到的问题
+
+用字符串搜索在原文中 Highlight 归一化 Query Term，会在大小写、标点、重复 Term 与 Phrase Boundary 下失败。
+
+### 测试契约
+
+#### 先看会坏在哪里
+
+测试使用混合大小写、重复 Token、重叠 Clause、Stored/Non-stored Field 与 Fragment Limit。
+
+??? note "文件差异：tests/contract/test_highlighting.py"
+    ```diff
+    diff --git a/tests/contract/test_highlighting.py b/tests/contract/test_highlighting.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..626133ec3fffc2acb9ca3d931aee53ce60a1bbd6
+    --- /dev/null
+    +++ b/tests/contract/test_highlighting.py
+    @@ -0,0 +1,126 @@
+    +import pytest
+    +
+    +from minilucene import KeywordField, Schema, TextField
+    +from minilucene.index.memory import RamIndexBuilder
+    +from minilucene.query import TermQuery
+    +from minilucene.search.reader import ReaderView
+    +from minilucene.search.searcher import IndexSearcher
+    +
+    +
+    +@pytest.fixture
+    +def searcher():
+    +    schema = Schema(
+    +        id=KeywordField(stored=True),
+    +        author=KeywordField(stored=True),
+    +        title=TextField(stored=True),
+    +        body=TextField(stored=True),
+    +        hidden=TextField(stored=False),
+    +    )
+    +    builder = RamIndexBuilder(schema)
+    +    builder.add_document(
+    +        {
+    +            "id": "1",
+    +            "author": "jonah",
+    +            "title": "Replication",
+    +            "body": "Kafka & follower replicas. <script>",
+    +            "hidden": "private",
+    +        }
+    +    )
+    +    builder.add_document(
+    +        {
+    +            "id": "2",
+    +            "author": "sam",
+    +            "title": "Positions",
+    +            "body": "Distributed the system",
+    +            "hidden": "private",
+    +        }
+    +    )
+    +    return IndexSearcher(
+    +        ReaderView(schema, (builder.freeze(generation=1),))
+    +    )
+    +
+    +
+    +def test_highlight_uses_original_offsets_and_escapes_text(searcher):
+    +    result = searcher.search_text(
+    +        '"follower replicas"',
+    +        default_field="body",
+    +        top_k=1,
+    +        highlight_fields=("body",),
+    +    )
+    +    assert result.hits[0].highlights["body"] == (
+    +        "Kafka &amp; <em>follower replicas</em>. &lt;script&gt;"
+    +    )
+    +
+    +
+    +def test_highlight_matches_lowercase_query_with_original_case(searcher):
+    +    result = searcher.search_text(
+    +        "KAFKA",
+    +        default_field="body",
+    +        top_k=1,
+    +        highlight_fields=("body",),
+    +    )
+    +    assert result.hits[0].highlights["body"].startswith(
+    +        "<em>Kafka</em> &amp;"
+    +    )
+    +
+    +
+    +def test_overlapping_term_and_phrase_offsets_are_merged():
+    +    schema = Schema(body=TextField(stored=True))
+    +    builder = RamIndexBuilder(schema)
+    +    builder.add_document({"body": "Kafka follower replicas"})
+    +    searcher = IndexSearcher(
+    +        ReaderView(schema, (builder.freeze(generation=1),))
+    +    )
+    +    result = searcher.search_text(
+    +        'kafka OR "kafka follower"',
+    +        default_field="body",
+    +        top_k=1,
+    +        highlight_fields=("body",),
+    +    )
+    +    assert result.hits[0].highlights["body"] == (
+    +        "<em>Kafka follower</em> replicas"
+    +    )
+    +
+    +
+    +def test_phrase_gap_highlights_the_original_gap_text(searcher):
+    +    result = searcher.search_text(
+    +        '"distributed the system"',
+    +        default_field="body",
+    +        top_k=1,
+    +        highlight_fields=("body",),
+    +    )
+    +    assert result.hits[0].highlights["body"] == (
+    +        "<em>Distributed the system</em>"
+    +    )
+    +
+    +
+    +def test_requested_field_without_a_match_is_still_safely_escaped(searcher):
+    +    result = searcher.search_text(
+    +        "title:replication",
+    +        default_field="body",
+    +        top_k=1,
+    +        highlight_fields=("body",),
+    +    )
+    +    assert result.hits[0].highlights["body"] == (
+    +        "Kafka &amp; follower replicas. &lt;script&gt;"
+    +    )
+    +
+    +
+    +@pytest.mark.parametrize("field", ["author", "hidden"])
+    +def test_nonstored_or_keyword_field_cannot_be_highlighted(searcher, field):
+    +    with pytest.raises(ValueError, match="stored TextField"):
+    +        searcher.search(
+    +            TermQuery("author", "jonah"),
+    +            top_k=1,
+    +            highlight_fields=(field,),
+    +        )
+    +
+    +
+    +def test_rewritten_prefix_terms_are_highlighted(searcher):
+    +    result = searcher.search_text(
+    +        "foll*",
+    +        default_field="body",
+    +        top_k=1,
+    +        highlight_fields=("body",),
+    +    )
+    +    assert "<em>follower</em>" in result.hits[0].highlights["body"]
+    ```
+
+**测试锁定什么**
+
+这些测试锁定本 Stage 的正常路径、边界条件、失败可见性与恢复不变量。
+
+**如何构造反例**
+
+测试使用混合大小写、重复 Token、重叠 Clause、Stored/Non-stored Field 与 Fragment Limit。
+
+**关键测试语句**
+
+```python
+assert result.hits[0].highlights["body"] == (
+```
+
+这条断言把可观察结果与本 Stage 的状态、可见性或持久性边界绑定，而不只检查调用返回。
+
+**失败意味着什么**
+
+失败说明实现跨越了刚建立的语义、顺序、所有权或恢复边界。
+
+### 基本概念
+
+Highlight 复用 Analyzer Offset，把索引证据映射回 Stored Source Text。
+
+### 为什么需要这个机制
+
+用字符串搜索在原文中 Highlight 归一化 Query Term，会在大小写、标点、重复 Term 与 Phrase Boundary 下失败。 若不建立明确边界，后续机制只能依赖偶然行为。
+
+### 运行时心智模型
+
+Highlighter 用 Field Analyzer 分析 Stored Text、选择 Rewritten Query Term 匹配的 Token Span、合并重叠并构建有界 Fragment。
+
+### 机制板块
+
+#### 基于 Offset 的 Highlight机制
+
+Highlighter 用 Field Analyzer 分析 Stored Text、选择 Rewritten Query Term 匹配的 Token Span、合并重叠并构建有界 Fragment。
+
+??? note "文件差异：src/minilucene/highlight.py"
+    ```diff
+    diff --git a/src/minilucene/highlight.py b/src/minilucene/highlight.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..846916a164d58395f7fb34a05a66b3b015161372
+    --- /dev/null
+    +++ b/src/minilucene/highlight.py
+    @@ -0,0 +1,141 @@
+    +import html
+    +from collections.abc import Mapping
+    +
+    +from minilucene.analysis import StandardAnalyzer
+    +from minilucene.analysis.model import Token
+    +from minilucene.query import (
+    +    BooleanQuery,
+    +    Occur,
+    +    PhraseQuery,
+    +    Query,
+    +    TermQuery,
+    +)
+    +from minilucene.schema import Schema
+    +
+    +type Offset = tuple[int, int]
+    +type PhraseConstraint = tuple[tuple[str, ...], tuple[int, ...]]
+    +
+    +
+    +def validate_highlight_fields(
+    +    schema: Schema, fields: tuple[str, ...]
+    +) -> None:
+    +    if len(set(fields)) != len(fields):
+    +        raise ValueError("highlight fields must be unique")
+    +    for name in fields:
+    +        if name not in schema:
+    +            raise ValueError(
+    +                f"highlight field must be a stored TextField: {name}"
+    +            )
+    +        field = schema[name]
+    +        if (
+    +            not field.stored
+    +            or not field.tokenized
+    +            or field.analyzer_name != "standard"
+    +        ):
+    +            raise ValueError(
+    +                f"highlight field must be a stored TextField: {name}"
+    +            )
+    +
+    +
+    +def _positive_constraints(
+    +    query: Query,
+    +    field: str,
+    +    *,
+    +    prohibited: bool = False,
+    +) -> tuple[set[str], list[PhraseConstraint]]:
+    +    terms: set[str] = set()
+    +    phrases: list[PhraseConstraint] = []
+    +    if prohibited:
+    +        return terms, phrases
+    +    if isinstance(query, TermQuery) and query.field == field:
+    +        terms.add(query.term)
+    +    elif isinstance(query, PhraseQuery) and query.field == field:
+    +        phrases.append(
+    +            (
+    +                query.terms,
+    +                query.positions
+    +                if query.positions is not None
+    +                else tuple(range(len(query.terms))),
+    +            )
+    +        )
+    +    elif isinstance(query, BooleanQuery):
+    +        for clause in query.clauses:
+    +            nested_terms, nested_phrases = _positive_constraints(
+    +                clause.query,
+    +                field,
+    +                prohibited=clause.occur is Occur.MUST_NOT,
+    +            )
+    +            terms.update(nested_terms)
+    +            phrases.extend(nested_phrases)
+    +    return terms, phrases
+    +
+    +
+    +def _phrase_offsets(
+    +    tokens: tuple[Token, ...], constraint: PhraseConstraint
+    +) -> list[Offset]:
+    +    terms, positions = constraint
+    +    by_position = {token.position: token for token in tokens}
+    +    matches: list[Offset] = []
+    +    for first in tokens:
+    +        if first.term != terms[0]:
+    +            continue
+    +        matched = [first]
+    +        for term, relative_position in zip(
+    +            terms[1:], positions[1:], strict=True
+    +        ):
+    +            token = by_position.get(
+    +                first.position + relative_position
+    +            )
+    +            if token is None or token.term != term:
+    +                break
+    +            matched.append(token)
+    +        else:
+    +            matches.append(
+    +                (matched[0].start_offset, matched[-1].end_offset)
+    +            )
+    +    return matches
+    +
+    +
+    +def _merge_offsets(offsets: list[Offset]) -> tuple[Offset, ...]:
+    +    if not offsets:
+    +        return ()
+    +    merged: list[list[int]] = []
+    +    for start, end in sorted(offsets):
+    +        if merged and start <= merged[-1][1]:
+    +            merged[-1][1] = max(merged[-1][1], end)
+    +        else:
+    +            merged.append([start, end])
+    +    return tuple((start, end) for start, end in merged)
+    +
+    +
+    +def highlight_text(text: str, query: Query, field: str) -> str:
+    +    tokens = StandardAnalyzer().analyze(text)
+    +    terms, phrases = _positive_constraints(query, field)
+    +    offsets = [
+    +        (token.start_offset, token.end_offset)
+    +        for token in tokens
+    +        if token.term in terms
+    +    ]
+    +    for phrase in phrases:
+    +        offsets.extend(_phrase_offsets(tokens, phrase))
+    +
+    +    pieces: list[str] = []
+    +    cursor = 0
+    +    for start, end in _merge_offsets(offsets):
+    +        pieces.append(html.escape(text[cursor:start]))
+    +        pieces.append(f"<em>{html.escape(text[start:end])}</em>")
+    +        cursor = end
+    +    pieces.append(html.escape(text[cursor:]))
+    +    return "".join(pieces)
+    +
+    +
+    +def highlight_document(
+    +    stored_fields: Mapping[str, str],
+    +    query: Query,
+    +    fields: tuple[str, ...],
+    +) -> dict[str, str]:
+    +    return {
+    +        field: highlight_text(stored_fields[field], query, field)
+    +        for field in fields
+    +        if field in stored_fields
+    +    }
+    ```
+
+??? note "文件差异：src/minilucene/reader.py"
+    ```diff
+    diff --git a/src/minilucene/reader.py b/src/minilucene/reader.py
+    index 88024c49213de83c9ce5aaa8ea19d3d47146a8fc..3f78c1b6d381b8346a75ee66afc494fd915d14fb 100644
+    --- a/src/minilucene/reader.py
+    +++ b/src/minilucene/reader.py
+    @@ -66,9 +66,35 @@ class IndexReader(ReaderView):
+             if self._closed:
+                 raise AlreadyClosedError("reader is closed")
+
+    -    def search(self, query: Query, *, top_k: int = 10) -> TopDocs:
+    +    def search(
+    +        self,
+    +        query: Query,
+    +        *,
+    +        top_k: int = 10,
+    +        highlight_fields: tuple[str, ...] = (),
+    +    ) -> TopDocs:
+    +        self._ensure_open()
+    +        return IndexSearcher(self).search(
+    +            query,
+    +            top_k=top_k,
+    +            highlight_fields=highlight_fields,
+    +        )
+    +
+    +    def search_text(
+    +        self,
+    +        source: str,
+    +        *,
+    +        default_field: str,
+    +        top_k: int = 10,
+    +        highlight_fields: tuple[str, ...] = (),
+    +    ) -> TopDocs:
+             self._ensure_open()
+    -        return IndexSearcher(self).search(query, top_k=top_k)
+    +        return IndexSearcher(self).search_text(
+    +            source,
+    +            default_field=default_field,
+    +            top_k=top_k,
+    +            highlight_fields=highlight_fields,
+    +        )
+
+         def document(self, doc_id: int) -> Mapping[str, str]:
+             self._ensure_open()
+    ```
+
+??? note "文件差异：src/minilucene/search/collector.py"
+    ```diff
+    diff --git a/src/minilucene/search/collector.py b/src/minilucene/search/collector.py
+    index efdbe0b93c2d53eae6d43668a6a345923805c2f5..3e1746cc5605d12246dbd82b531b7e74af5324ff 100644
+    --- a/src/minilucene/search/collector.py
+    +++ b/src/minilucene/search/collector.py
+    @@ -1,7 +1,7 @@
+     import heapq
+     import math
+     from collections.abc import Mapping
+    -from dataclasses import dataclass
+    +from dataclasses import dataclass, field
+     from types import MappingProxyType
+
+
+    @@ -11,6 +11,9 @@ class SearchHit:
+         segment_generation: int
+         local_doc_id: int
+         stored_fields: Mapping[str, str]
+    +    highlights: Mapping[str, str] = field(
+    +        default_factory=lambda: MappingProxyType({})
+    +    )
+
+
+     @dataclass(frozen=True, slots=True)
+    @@ -36,6 +39,7 @@ class TopKCollector:
+             segment_generation: int,
+             local_doc_id: int,
+             stored_fields: Mapping[str, str] | None = None,
+    +        highlights: Mapping[str, str] | None = None,
+         ) -> None:
+             if not math.isfinite(score):
+                 raise ValueError("collected score must be finite")
+    @@ -47,6 +51,7 @@ class TopKCollector:
+                 segment_generation=segment_generation,
+                 local_doc_id=local_doc_id,
+                 stored_fields=MappingProxyType(dict(stored_fields or {})),
+    +            highlights=MappingProxyType(dict(highlights or {})),
+             )
+             key = (score, -segment_generation, -local_doc_id)
+             item = (key, hit)
+    ```
+
+??? note "文件差异：src/minilucene/search/searcher.py"
+    ```diff
+    diff --git a/src/minilucene/search/searcher.py b/src/minilucene/search/searcher.py
+    index 652b07d013d5aed76f2968b3b6acd597e40b224d..67cfa2665774671fcc97610feb58fa62cf80cefa 100644
+    --- a/src/minilucene/search/searcher.py
+    +++ b/src/minilucene/search/searcher.py
+    @@ -1,4 +1,9 @@
+    +from minilucene.highlight import (
+    +    highlight_document,
+    +    validate_highlight_fields,
+    +)
+     from minilucene.query.model import Query
+    +from minilucene.query_parser import parse_query
+     from minilucene.search.bm25 import BM25
+     from minilucene.search.collector import TopDocs, TopKCollector
+     from minilucene.search.reader import ReaderView
+    @@ -12,16 +17,42 @@ class IndexSearcher:
+             self.reader = reader
+             self.similarity = similarity or BM25()
+
+    -    def search(self, query: Query, *, top_k: int = 10) -> TopDocs:
+    +    def search(
+    +        self,
+    +        query: Query,
+    +        *,
+    +        top_k: int = 10,
+    +        highlight_fields: tuple[str, ...] = (),
+    +    ) -> TopDocs:
+    +        validate_highlight_fields(self.reader.schema, highlight_fields)
+    +        rewritten = self.reader.rewrite(query)
+             collector = TopKCollector(top_k)
+             for doc_id, score in score_query(
+    -            self.reader, query, self.similarity
+    +            self.reader, rewritten, self.similarity
+             ).items():
+                 address = self.reader.address(doc_id)
+    +            stored_fields = self.reader.stored_fields(doc_id)
+                 collector.collect(
+                     score,
+                     address.segment_generation,
+                     address.local_doc_id,
+    -                self.reader.stored_fields(doc_id),
+    +                stored_fields,
+    +                highlight_document(
+    +                    stored_fields, rewritten, highlight_fields
+    +                ),
+                 )
+             return collector.top_docs()
+    +
+    +    def search_text(
+    +        self,
+    +        source: str,
+    +        *,
+    +        default_field: str,
+    +        top_k: int = 10,
+    +        highlight_fields: tuple[str, ...] = (),
+    +    ) -> TopDocs:
+    +        return self.search(
+    +            parse_query(source, self.reader.schema, default_field),
+    +            top_k=top_k,
+    +            highlight_fields=highlight_fields,
+    +        )
+    ```
+
+**是什么，为什么现在需要**
+
+Highlight 复用 Analyzer Offset，把索引证据映射回 Stored Source Text。
+
+**在运行时做什么**
+
+Highlighter 用 Field Analyzer 分析 Stored Text、选择 Rewritten Query Term 匹配的 Token Span、合并重叠并构建有界 Fragment。
+
+**关键语句理解**
+
+Offset 而非归一化 Token String，保留 Highlight Tag 之间准确的原始大小写与标点。
+
+### 验证证据
+
+运行 `uv run pytest -q $(cat journey/stages/26-highlighting/tests.txt)`，再用 Journey Check 比较累计源码与标准 Stage。
+
+### 需要真正记住的内容
+
+Offset 而非归一化 Token String，保留 Highlight Tag 之间准确的原始大小写与标点。
+
+### 用自己的话讲清楚
+
+请解释这个 Stage 关闭的失败窗口、运行时状态如何变化，以及哪条语句守住边界。
+
+### 教材
+
+[第 9 章](https://github.com/system-in-miniature/mini-lucene/blob/main/docs/zh/tutorial/09-query-language.md)
+
+[Complete reference patch / 完整参考补丁](https://github.com/system-in-miniature/mini-lucene/blob/main/journey/stages/26-highlighting/stage.patch)

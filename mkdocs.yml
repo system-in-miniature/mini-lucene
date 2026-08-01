@@ -15,6 +15,9 @@ theme:
     - navigation.top
     - content.code.copy
 
+extra_javascript:
+  - assets/javascripts/language-switch.js
+
 markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
@@ -40,6 +43,40 @@ nav:
           - 09 · The Query Language: tutorial/09-query-language.md
           - 10 · Merge and Beyond: tutorial/10-merge-and-beyond.md
           - 11 · Doc-at-a-Time Execution: tutorial/11-daat.md
+      - Self-Guided Rebuild:
+          - Build MiniLucene yourself: journey/index.md
+          - "01 · Field and document contract": journey/stage-01.md
+          - "02 · Positional analysis": journey/stage-02.md
+          - "03 · Immutable RAM inverted index": journey/stage-03.md
+          - "04 · Closed query matching": journey/stage-04.md
+          - "05 · Snapshot corpus statistics": journey/stage-05.md
+          - "06 · Global BM25 ranking": journey/stage-06.md
+          - "07 · Bounded Top-K retrieval": journey/stage-07.md
+          - "08 · Immutable segment images": journey/stage-08.md
+          - "09 · Bounded varint primitives": journey/stage-09.md
+          - "10 · Educational segment codec": journey/stage-10.md
+          - "11 · Checksummed segment publication": journey/stage-11.md
+          - "12 · Manifest commit root": journey/stage-12.md
+          - "13 · Index lifecycle ownership": journey/stage-13.md
+          - "14 · Writer flush": journey/stage-14.md
+          - "15 · Atomic commit and reopen": journey/stage-15.md
+          - "16 · Point-in-time reader snapshots": journey/stage-16.md
+          - "17 · Near-real-time refresh": journey/stage-17.md
+          - "18 · Immutable live-doc masks": journey/stage-18.md
+          - "19 · Delete by exact term": journey/stage-19.md
+          - "20 · Update and live-only statistics": journey/stage-20.md
+          - "21 · Explicit segment merge": journey/stage-21.md
+          - "22 · Segment ownership and close": journey/stage-22.md
+          - "23 · Closed query lexer": journey/stage-23.md
+          - "24 · Recursive-descent query parser": journey/stage-24.md
+          - "25 · Bounded prefix rewrite": journey/stage-25.md
+          - "26 · Offset-based highlighting": journey/stage-26.md
+          - "27 · Deterministic relevance evaluation": journey/stage-27.md
+          - "28 · CLI and domain closure": journey/stage-28.md
+          - "29 · Query and token regressions": journey/stage-29.md
+          - "30 · Document-at-a-time execution": journey/stage-30.md
+      - Agent-Guided Rebuild:
+          - CLI usage: agent-guide.md
       - Reference:
           - Architecture:
               - Retrieval kernel: phase1-retrieval-kernel.md
@@ -72,6 +109,40 @@ nav:
           - 09 · 查询语言: zh/tutorial/09-query-language.md
           - 10 · 合并与方法论: zh/tutorial/10-merge-and-beyond.md
           - 11 · 文档一次查询执行: zh/tutorial/11-daat.md
+      - 自主重建:
+          - 从零构建 MiniLucene: zh/journey/index.md
+          - "01 · 字段与文档契约": zh/journey/stage-01.md
+          - "02 · 位置化文本分析": zh/journey/stage-02.md
+          - "03 · 不可变 RAM 倒排索引": zh/journey/stage-03.md
+          - "04 · 封闭 Query 匹配": zh/journey/stage-04.md
+          - "05 · 快照级语料统计": zh/journey/stage-05.md
+          - "06 · 全局 BM25 排名": zh/journey/stage-06.md
+          - "07 · 有界 Top-K 检索": zh/journey/stage-07.md
+          - "08 · 不可变 Segment Image": zh/journey/stage-08.md
+          - "09 · 有界 Varint 原语": zh/journey/stage-09.md
+          - "10 · 教学用 Segment Codec": zh/journey/stage-10.md
+          - "11 · 带校验和的 Segment 发布": zh/journey/stage-11.md
+          - "12 · Manifest 提交根": zh/journey/stage-12.md
+          - "13 · Index 生命周期所有权": zh/journey/stage-13.md
+          - "14 · Writer Flush": zh/journey/stage-14.md
+          - "15 · 原子 Commit 与重开": zh/journey/stage-15.md
+          - "16 · 时间点 Reader Snapshot": zh/journey/stage-16.md
+          - "17 · Near-real-time Refresh": zh/journey/stage-17.md
+          - "18 · 不可变 Live-doc Mask": zh/journey/stage-18.md
+          - "19 · 按精确 Term 删除": zh/journey/stage-19.md
+          - "20 · Update 与仅 Live 统计": zh/journey/stage-20.md
+          - "21 · 显式 Segment Merge": zh/journey/stage-21.md
+          - "22 · Segment 所有权与 Close": zh/journey/stage-22.md
+          - "23 · 封闭 Query Lexer": zh/journey/stage-23.md
+          - "24 · 递归下降 Query Parser": zh/journey/stage-24.md
+          - "25 · 有界 Prefix Rewrite": zh/journey/stage-25.md
+          - "26 · 基于 Offset 的 Highlight": zh/journey/stage-26.md
+          - "27 · 确定性相关性评估": zh/journey/stage-27.md
+          - "28 · CLI 与领域闭环": zh/journey/stage-28.md
+          - "29 · Query 与 Token 回归": zh/journey/stage-29.md
+          - "30 · Document-at-a-time 执行": zh/journey/stage-30.md
+      - Agent 带教:
+          - CLI 使用教程: zh/agent-guide.md
       - 参考资料:
           - 中文概览: zh/index.md
           - 架构:

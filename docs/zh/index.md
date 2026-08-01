@@ -6,6 +6,14 @@ MiniLucene 是一个紧凑的 Python 词法搜索参考实现，用来串联字�
 位置倒排索引、BM25、不可变段、时点读取器和近实时变更。它是可检查的教学系统，
 不是 Apache Lucene API 或文件格式的兼容实现。
 
+## 学习模式
+
+- **机制教程**：按[十一章教程](tutorial/index.md)从概念与运行时路径理解各项机制。
+- **自主重建**：进入[三十阶段重建旅程](journey/index.md)，依次阅读当前问题、测试契约、
+  基本概念与按机制分组的代码差异。
+- **Agent 带教**：按照 [CLI 使用教程](agent-guide.md)，让 Codex 互动讲解、实现并
+  验收一个 Stage。
+
 ## 安装
 
 需要 Python 3.12+ 和 [uv](https://docs.astral.sh/uv/)。

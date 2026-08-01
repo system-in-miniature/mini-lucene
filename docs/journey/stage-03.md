@@ -1,0 +1,326 @@
+# Stage 03 · Immutable RAM inverted index
+
+### Goal
+
+Build immutable ram inverted index and explain its boundary from an executable counterexample, runtime state, and the critical statement.
+
+??? note "Deliverable files"
+    - `src/minilucene/index/__init__.py`
+    - `src/minilucene/index/memory.py`
+    - `src/minilucene/index/postings.py`
+    - `tests/contract/test_memory_index.py`
+
+### The problem at this point
+
+Validated documents still require a structure that answers which documents contain a term and where it occurs.
+
+### Test contract
+
+#### See the failure first
+
+Tests index repeated terms and multiple fields, then mutate source inputs to prove the built segment does not change.
+
+??? note "File diff: tests/contract/test_memory_index.py"
+    ```diff
+    diff --git a/tests/contract/test_memory_index.py b/tests/contract/test_memory_index.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..e40a6cf30f9e15a20493fc11b4785759beae2545
+    --- /dev/null
+    +++ b/tests/contract/test_memory_index.py
+    @@ -0,0 +1,70 @@
+    +import pytest
+    +
+    +from minilucene.index.memory import RamIndexBuilder
+    +from minilucene.schema import (
+    +    KeywordField,
+    +    Schema,
+    +    SchemaError,
+    +    StoredField,
+    +    TextField,
+    +)
+    +
+    +
+    +def test_ram_segment_contains_positions_lengths_and_only_stored_values():
+    +    schema = Schema(
+    +        id=KeywordField(stored=True),
+    +        body=TextField(stored=False),
+    +        source=StoredField(),
+    +    )
+    +    builder = RamIndexBuilder(schema)
+    +    builder.add_document(
+    +        {"id": "d1", "body": "Kafka kafka replicas", "source": "manual"}
+    +    )
+    +    segment = builder.freeze(generation=1)
+    +
+    +    posting = segment.postings["body"]["kafka"][0]
+    +    assert (posting.doc_id, posting.term_frequency, posting.positions) == (
+    +        0,
+    +        2,
+    +        (0, 1),
+    +    )
+    +    assert segment.field_lengths["body"] == (3,)
+    +    assert segment.stored_documents == (
+    +        {"id": "d1", "source": "manual"},
+    +    )
+    +
+    +
+    +def test_keyword_field_indexes_one_exact_term_without_positions():
+    +    builder = RamIndexBuilder(Schema(author=KeywordField()))
+    +    builder.add_document({"author": "Jonah Smith"})
+    +    segment = builder.freeze(generation=3)
+    +    posting = segment.postings["author"]["Jonah Smith"][0]
+    +    assert posting.term_frequency == 1
+    +    assert posting.positions == ()
+    +
+    +
+    +def test_missing_indexed_field_has_zero_length():
+    +    builder = RamIndexBuilder(
+    +        Schema(id=KeywordField(stored=True), body=TextField())
+    +    )
+    +    builder.add_document({"id": "1"})
+    +    segment = builder.freeze(generation=1)
+    +    assert segment.field_lengths["body"] == (0,)
+    +    assert segment.field_lengths["id"] == (1,)
+    +
+    +
+    +def test_failed_document_validation_does_not_mutate_builder():
+    +    builder = RamIndexBuilder(Schema(body=TextField()))
+    +    with pytest.raises(SchemaError):
+    +        builder.add_document({"unknown": "value"})
+    +    assert builder.freeze(generation=1).max_doc == 0
+    +
+    +
+    +def test_frozen_segment_collections_are_immutable():
+    +    builder = RamIndexBuilder(Schema(body=TextField(stored=True)))
+    +    builder.add_document({"body": "search"})
+    +    segment = builder.freeze(generation=1)
+    +    with pytest.raises(TypeError):
+    +        segment.postings["body"]["search"] = ()
+    +    with pytest.raises(TypeError):
+    +        segment.stored_documents[0]["body"] = "changed"
+    ```
+
+**What this test locks**
+
+These tests lock the Stage's happy path, boundary conditions, visible failures, and recovery invariants.
+
+**How it constructs the counterexample**
+
+Tests index repeated terms and multiple fields, then mutate source inputs to prove the built segment does not change.
+
+**Key test statement**
+
+```python
+assert (posting.doc_id, posting.term_frequency, posting.positions) == (
+```
+
+This assertion binds the observable result to the Stage's state, visibility, or durability boundary rather than merely checking that a call returned.
+
+**What a failure means**
+
+A failure means the implementation crossed the semantic, ordering, ownership, or recovery boundary just introduced.
+
+### Basic concepts
+
+A posting binds term, doc ID, frequency, and positions; norms store per-field length; an immutable segment freezes one indexing generation.
+
+### Why this mechanism is necessary
+
+Validated documents still require a structure that answers which documents contain a term and where it occurs. Without an explicit boundary, every later mechanism would depend on accidental behavior.
+
+### Runtime mental model
+
+The builder analyzes indexed fields, assigns local doc IDs, accumulates ordered postings and norms, then publishes immutable mappings.
+
+### Mechanism blocks
+
+#### Immutable RAM inverted index mechanism
+
+The builder analyzes indexed fields, assigns local doc IDs, accumulates ordered postings and norms, then publishes immutable mappings.
+
+??? note "File diff: src/minilucene/index/memory.py"
+    ```diff
+    diff --git a/src/minilucene/index/memory.py b/src/minilucene/index/memory.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..4e2bff6c5b4479d1b4d081ede519b00e87b928eb
+    --- /dev/null
+    +++ b/src/minilucene/index/memory.py
+    @@ -0,0 +1,98 @@
+    +from collections import defaultdict
+    +from collections.abc import Mapping
+    +from types import MappingProxyType
+    +
+    +from minilucene.analysis import KeywordAnalyzer, StandardAnalyzer
+    +from minilucene.analysis.model import Token
+    +from minilucene.document import FrozenDocument, freeze_document
+    +from minilucene.index.postings import MemorySegment, Posting
+    +from minilucene.schema import FieldType, Schema
+    +
+    +
+    +def _analyze(field: FieldType, value: str) -> tuple[Token, ...]:
+    +    if field.analyzer_name == "standard":
+    +        return StandardAnalyzer().analyze(value)
+    +    if field.analyzer_name == "keyword":
+    +        return KeywordAnalyzer().analyze(value)
+    +    raise ValueError(f"unknown analyzer: {field.analyzer_name}")
+    +
+    +
+    +class RamIndexBuilder:
+    +    def __init__(self, schema: Schema) -> None:
+    +        self.schema = schema
+    +        self._stored_documents: list[FrozenDocument] = []
+    +        self._field_lengths: dict[str, list[int]] = {
+    +            name: [] for name, field in schema.items() if field.indexed
+    +        }
+    +        self._postings: dict[
+    +            str, dict[str, list[Posting]]
+    +        ] = defaultdict(lambda: defaultdict(list))
+    +
+    +    @property
+    +    def document_count(self) -> int:
+    +        return len(self._stored_documents)
+    +
+    +    def add_document(self, values: Mapping[str, object]) -> int:
+    +        document = freeze_document(self.schema, values)
+    +        prepared: dict[str, tuple[Token, ...]] = {}
+    +        for name, field in self.schema.items():
+    +            if field.indexed and name in document:
+    +                prepared[name] = _analyze(field, document[name])
+    +
+    +        doc_id = self.document_count
+    +        stored = MappingProxyType(
+    +            {
+    +                name: value
+    +                for name, value in document.items()
+    +                if self.schema[name].stored
+    +            }
+    +        )
+    +        self._stored_documents.append(stored)
+    +
+    +        for name, lengths in self._field_lengths.items():
+    +            tokens = prepared.get(name, ())
+    +            lengths.append(len(tokens))
+    +            positions_by_term: dict[str, list[int]] = defaultdict(list)
+    +            for token in tokens:
+    +                positions_by_term[token.term].append(token.position)
+    +            field = self.schema[name]
+    +            for term, positions in positions_by_term.items():
+    +                posting_positions = (
+    +                    tuple(positions) if field.store_positions else ()
+    +                )
+    +                self._postings[name][term].append(
+    +                    Posting(
+    +                        doc_id=doc_id,
+    +                        term_frequency=len(positions),
+    +                        positions=posting_positions,
+    +                    )
+    +                )
+    +        return doc_id
+    +
+    +    def freeze(self, *, generation: int) -> MemorySegment:
+    +        if generation < 0:
+    +            raise ValueError("segment generation must be non-negative")
+    +        postings = MappingProxyType(
+    +            {
+    +                field: MappingProxyType(
+    +                    {
+    +                        term: tuple(term_postings)
+    +                        for term, term_postings in sorted(terms.items())
+    +                    }
+    +                )
+    +                for field, terms in sorted(self._postings.items())
+    +            }
+    +        )
+    +        field_lengths = MappingProxyType(
+    +            {
+    +                field: tuple(lengths)
+    +                for field, lengths in sorted(self._field_lengths.items())
+    +            }
+    +        )
+    +        return MemorySegment(
+    +            generation=generation,
+    +            max_doc=self.document_count,
+    +            postings=postings,
+    +            stored_documents=tuple(self._stored_documents),
+    +            field_lengths=field_lengths,
+    +        )
+    ```
+
+??? note "File diff: src/minilucene/index/postings.py"
+    ```diff
+    diff --git a/src/minilucene/index/postings.py b/src/minilucene/index/postings.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..4f04ba86364be7b0cb24f27abb28620a1b14ef60
+    --- /dev/null
+    +++ b/src/minilucene/index/postings.py
+    @@ -0,0 +1,18 @@
+    +from collections.abc import Mapping
+    +from dataclasses import dataclass
+    +
+    +
+    +@dataclass(frozen=True, slots=True)
+    +class Posting:
+    +    doc_id: int
+    +    term_frequency: int
+    +    positions: tuple[int, ...]
+    +
+    +
+    +@dataclass(frozen=True, slots=True)
+    +class MemorySegment:
+    +    generation: int
+    +    max_doc: int
+    +    postings: Mapping[str, Mapping[str, tuple[Posting, ...]]]
+    +    stored_documents: tuple[Mapping[str, str], ...]
+    +    field_lengths: Mapping[str, tuple[int, ...]]
+    ```
+
+**What it is and why it appears**
+
+A posting binds term, doc ID, frequency, and positions; norms store per-field length; an immutable segment freezes one indexing generation.
+
+**Runtime role**
+
+The builder analyzes indexed fields, assigns local doc IDs, accumulates ordered postings and norms, then publishes immutable mappings.
+
+**Statement understanding**
+
+Sorting terms, documents, and positions makes the segment deterministic and safe to share without mutation locks.
+
+#### Package, fixture, and project support
+
+Keep exports, test corpora, dependencies, and the runtime environment reproducible.
+
+??? note "Supporting file diffs (1 file)"
+    **`src/minilucene/index/__init__.py`**
+
+    ```diff
+    diff --git a/src/minilucene/index/__init__.py b/src/minilucene/index/__init__.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..526ed500ddd971e3a53f86bfbaacd97fed7a1870
+    --- /dev/null
+    +++ b/src/minilucene/index/__init__.py
+    @@ -0,0 +1,4 @@
+    +from minilucene.index.memory import RamIndexBuilder
+    +from minilucene.index.postings import MemorySegment, Posting
+    +
+    +__all__ = ["MemorySegment", "Posting", "RamIndexBuilder"]
+    ```
+
+
+### Verification evidence
+
+Run `uv run pytest -q $(cat journey/stages/03-ram-inverted-index/tests.txt)`, then use Journey Check to compare the cumulative source with the canonical Stage.
+
+### Durable takeaways
+
+Sorting terms, documents, and positions makes the segment deterministic and safe to share without mutation locks.
+
+### Explain it in your own words
+
+Explain the failure window this Stage closes, how runtime state changes, and which statement protects the boundary.
+
+### Textbook
+
+[Chapter 3](https://github.com/system-in-miniature/mini-lucene/blob/main/docs/tutorial/03-inverted-index.md)
+
+[Complete reference patch / 完整参考补丁](https://github.com/system-in-miniature/mini-lucene/blob/main/journey/stages/03-ram-inverted-index/stage.patch)

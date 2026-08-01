@@ -1,0 +1,524 @@
+# Stage 15 · Atomic commit and reopen
+
+### Goal
+
+Build atomic commit and reopen and explain its boundary from an executable counterexample, runtime state, and the critical statement.
+
+??? note "Deliverable files"
+    - `src/minilucene/__init__.py`
+    - `src/minilucene/index/directory.py`
+    - `src/minilucene/reader.py`
+    - `src/minilucene/writer.py`
+    - `tests/acceptance/test_phase2_storage_commit.py`
+    - `tests/contract/test_disk_search.py`
+    - `tests/storage/test_commit_recovery.py`
+
+### The problem at this point
+
+Flushed segments survive on disk but remain invisible after restart until the manifest root publishes them.
+
+### Test contract
+
+#### See the failure first
+
+Commit tests fail before and during root replacement, reopen repeatedly, and require either the complete previous generation or the complete next one.
+
+??? note "File diff: tests/acceptance/test_phase2_storage_commit.py"
+    ```diff
+    diff --git a/tests/acceptance/test_phase2_storage_commit.py b/tests/acceptance/test_phase2_storage_commit.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..4af9be6fad70e784b4bd2b95cbb5b5da1e67794a
+    --- /dev/null
+    +++ b/tests/acceptance/test_phase2_storage_commit.py
+    @@ -0,0 +1,64 @@
+    +import pytest
+    +
+    +from minilucene import Index, KeywordField, MemoryIndex, Schema, TextField
+    +from minilucene.query import PhraseQuery, TermQuery
+    +
+    +
+    +def test_restart_reads_only_committed_checksummed_segments(tmp_path):
+    +    schema = Schema(
+    +        id=KeywordField(stored=True),
+    +        title=TextField(stored=True, boost=2.0),
+    +        body=TextField(stored=True),
+    +    )
+    +    documents = (
+    +        {
+    +            "id": "1",
+    +            "title": "Kafka",
+    +            "body": "follower replicas",
+    +        },
+    +        {
+    +            "id": "2",
+    +            "title": "Rabbit",
+    +            "body": "message replicas",
+    +        },
+    +    )
+    +    memory = MemoryIndex(schema)
+    +    index = Index.create(tmp_path, schema)
+    +    with index.writer() as writer:
+    +        for document in documents:
+    +            memory.add_document(**document)
+    +            writer.add_document(**document)
+    +            writer.flush()
+    +        manifest = writer.commit()
+    +
+    +    assert manifest.segment_generations == (1, 2)
+    +    reopened = Index.open(tmp_path)
+    +    assert reopened.schema.fingerprint == schema.fingerprint
+    +    reader = reopened.open_reader()
+    +
+    +    for query in (
+    +        TermQuery("body", "replicas"),
+    +        PhraseQuery("body", ("follower", "replicas")),
+    +    ):
+    +        expected = memory.search(query, top_k=10)
+    +        actual = reader.search(query, top_k=10)
+    +        assert actual.total_hits == expected.total_hits
+    +        assert [
+    +            hit.stored_fields["id"] for hit in actual.hits
+    +        ] == [hit.stored_fields["id"] for hit in expected.hits]
+    +        assert [hit.score for hit in actual.hits] == pytest.approx(
+    +            [hit.score for hit in expected.hits]
+    +        )
+    +
+    +    with reopened.writer() as writer:
+    +        writer.add_document(id="3", title="Orphan", body="not committed")
+    +        writer.flush()
+    +    crashed_view = Index.open(tmp_path).open_reader()
+    +    assert (
+    +        crashed_view.search(
+    +            TermQuery("body", "not"),
+    +            top_k=10,
+    +        ).total_hits
+    +        == 0
+    +    )
+    +    assert crashed_view.max_doc == 2
+    ```
+
+**What this test locks**
+
+These tests lock the Stage's happy path, boundary conditions, visible failures, and recovery invariants.
+
+**How it constructs the counterexample**
+
+Commit tests fail before and during root replacement, reopen repeatedly, and require either the complete previous generation or the complete next one.
+
+**Key test statement**
+
+```python
+assert manifest.segment_generations == (1, 2)
+```
+
+This assertion binds the observable result to the Stage's state, visibility, or durability boundary rather than merely checking that a call returned.
+
+**What a failure means**
+
+A failure means the implementation crossed the semantic, ordering, ownership, or recovery boundary just introduced.
+
+??? note "File diff: tests/contract/test_disk_search.py"
+    ```diff
+    diff --git a/tests/contract/test_disk_search.py b/tests/contract/test_disk_search.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..70d53ca7c7063a34f0e5bf9429e334440b2c3f81
+    --- /dev/null
+    +++ b/tests/contract/test_disk_search.py
+    @@ -0,0 +1,72 @@
+    +import pytest
+    +
+    +from minilucene import Index, KeywordField, MemoryIndex, Schema, TextField
+    +from minilucene.query import (
+    +    BooleanClause,
+    +    BooleanQuery,
+    +    Occur,
+    +    PhraseQuery,
+    +    PrefixQuery,
+    +    TermQuery,
+    +)
+    +
+    +
+    +def test_disk_search_matches_in_memory_oracle_after_reopen(tmp_path):
+    +    schema = Schema(
+    +        id=KeywordField(stored=True),
+    +        title=TextField(stored=True, boost=2.0),
+    +        body=TextField(stored=True),
+    +    )
+    +    documents = (
+    +        {
+    +            "id": "1",
+    +            "title": "Kafka",
+    +            "body": "follower replicas",
+    +        },
+    +        {
+    +            "id": "2",
+    +            "title": "Rabbit",
+    +            "body": "message replicas",
+    +        },
+    +        {
+    +            "id": "3",
+    +            "title": "Kafka internals",
+    +            "body": "follower distant replicas",
+    +        },
+    +    )
+    +    memory = MemoryIndex(schema)
+    +    disk = Index.create(tmp_path, schema)
+    +    with disk.writer() as writer:
+    +        for position, document in enumerate(documents):
+    +            memory.add_document(**document)
+    +            writer.add_document(**document)
+    +            if position == 0:
+    +                writer.flush()
+    +        writer.commit()
+    +
+    +    reader = Index.open(tmp_path).open_reader()
+    +    queries = (
+    +        TermQuery("title", "kafka"),
+    +        PhraseQuery("body", ("follower", "replicas")),
+    +        PrefixQuery("title", "kaf"),
+    +        BooleanQuery(
+    +            (
+    +                BooleanClause(
+    +                    Occur.MUST, TermQuery("title", "kafka")
+    +                ),
+    +                BooleanClause(
+    +                    Occur.MUST_NOT, TermQuery("body", "distant")
+    +                ),
+    +            )
+    +        ),
+    +    )
+    +    for query in queries:
+    +        expected = memory.search(query, top_k=10)
+    +        actual = reader.search(query, top_k=10)
+    +        assert actual.total_hits == expected.total_hits
+    +        assert [
+    +            hit.stored_fields["id"] for hit in actual.hits
+    +        ] == [hit.stored_fields["id"] for hit in expected.hits]
+    +        assert [hit.score for hit in actual.hits] == pytest.approx(
+    +            [hit.score for hit in expected.hits]
+    +        )
+    ```
+
+**What this test locks**
+
+These tests lock the Stage's happy path, boundary conditions, visible failures, and recovery invariants.
+
+**How it constructs the counterexample**
+
+Commit tests fail before and during root replacement, reopen repeatedly, and require either the complete previous generation or the complete next one.
+
+**Key test statement**
+
+```python
+assert manifest.segment_generations == (1, 2)
+```
+
+This assertion binds the observable result to the Stage's state, visibility, or durability boundary rather than merely checking that a call returned.
+
+**What a failure means**
+
+A failure means the implementation crossed the semantic, ordering, ownership, or recovery boundary just introduced.
+
+??? note "File diff: tests/storage/test_commit_recovery.py"
+    ```diff
+    diff --git a/tests/storage/test_commit_recovery.py b/tests/storage/test_commit_recovery.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..dab4f076a44b22fd243291da759fa12978b7ea24
+    --- /dev/null
+    +++ b/tests/storage/test_commit_recovery.py
+    @@ -0,0 +1,81 @@
+    +import pytest
+    +
+    +from minilucene import Index, KeywordField, Schema, TextField
+    +from minilucene.query import TermQuery
+    +from minilucene.storage.filesystem import FileSystemOps
+    +from minilucene.storage.manifest import ManifestStore
+    +
+    +
+    +class ReplaceFailingFileSystem(FileSystemOps):
+    +    def replace(self, source, destination):
+    +        if destination.name == "manifest.json":
+    +            raise OSError("injected manifest replacement failure")
+    +        super().replace(source, destination)
+    +
+    +
+    +def build_index(tmp_path):
+    +    return Index.create(
+    +        tmp_path,
+    +        Schema(
+    +            id=KeywordField(stored=True),
+    +            body=TextField(stored=True),
+    +        ),
+    +    )
+    +
+    +
+    +def test_complete_segment_without_manifest_is_ignored_after_reopen(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        writer.add_document(id="1", body="orphan")
+    +        writer.flush()
+    +    reopened = Index.open(tmp_path)
+    +    assert reopened.open_reader().max_doc == 0
+    +
+    +
+    +def test_commit_flushes_and_reopen_searches_committed_data(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        writer.add_document(id="1", body="committed data")
+    +        manifest = writer.commit()
+    +    assert manifest.commit_generation == 1
+    +    reopened = Index.open(tmp_path)
+    +    result = reopened.open_reader().search(
+    +        TermQuery("body", "committed"),
+    +        top_k=10,
+    +    )
+    +    assert result.total_hits == 1
+    +    assert result.hits[0].stored_fields["id"] == "1"
+    +
+    +
+    +def test_manifest_replace_failure_preserves_previous_commit(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        writer.add_document(id="old", body="stable")
+    +        writer.commit()
+    +
+    +    with index.writer() as writer:
+    +        writer.add_document(id="new", body="unpublished")
+    +        writer._manifest_store = ManifestStore(
+    +            tmp_path,
+    +            fs=ReplaceFailingFileSystem(),
+    +        )
+    +        with pytest.raises(OSError, match="injected"):
+    +            writer.commit()
+    +
+    +    reader = Index.open(tmp_path).open_reader()
+    +    assert reader.search(TermQuery("body", "stable"), top_k=10).total_hits == 1
+    +    assert (
+    +        reader.search(TermQuery("body", "unpublished"), top_k=10).total_hits
+    +        == 0
+    +    )
+    +
+    +
+    +def test_commit_preserves_explicit_segment_order(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        writer.add_document(id="1", body="first")
+    +        writer.flush()
+    +        writer.add_document(id="2", body="second")
+    +        manifest = writer.commit()
+    +    assert manifest.segment_generations == (1, 2)
+    +    assert Index.open(tmp_path).open_reader().max_doc == 2
+    ```
+
+**What this test locks**
+
+These tests lock the Stage's happy path, boundary conditions, visible failures, and recovery invariants.
+
+**How it constructs the counterexample**
+
+Commit tests fail before and during root replacement, reopen repeatedly, and require either the complete previous generation or the complete next one.
+
+**Key test statement**
+
+```python
+assert manifest.segment_generations == (1, 2)
+```
+
+This assertion binds the observable result to the Stage's state, visibility, or durability boundary rather than merely checking that a call returned.
+
+**What a failure means**
+
+A failure means the implementation crossed the semantic, ordering, ownership, or recovery boundary just introduced.
+
+### Basic concepts
+
+Commit is a publication protocol over already durable segment children; reopen reconstructs an index strictly from the current manifest.
+
+### Why this mechanism is necessary
+
+Flushed segments survive on disk but remain invisible after restart until the manifest root publishes them. Without an explicit boundary, every later mechanism would depend on accidental behavior.
+
+### Runtime mental model
+
+The writer flushes, prepares all referenced children, writes the next manifest, atomically swaps the root, and advances committed generation only after success.
+
+### Mechanism blocks
+
+#### Atomic commit and reopen mechanism
+
+The writer flushes, prepares all referenced children, writes the next manifest, atomically swaps the root, and advances committed generation only after success.
+
+??? note "File diff: src/minilucene/index/directory.py"
+    ```diff
+    diff --git a/src/minilucene/index/directory.py b/src/minilucene/index/directory.py
+    index 6f34b46c584c6af21517a3b8c6425eed6f4e474e..ae3e710519ac568491a09279ba609151cbe3ad13 100644
+    --- a/src/minilucene/index/directory.py
+    +++ b/src/minilucene/index/directory.py
+    @@ -6,9 +6,11 @@ from minilucene.errors import (
+         IndexNotFoundError,
+         SchemaMismatchError,
+     )
+    +from minilucene.reader import IndexReader
+     from minilucene.schema import Schema
+     from minilucene.storage.filesystem import FileSystemOps
+     from minilucene.storage.manifest import Manifest, ManifestStore
+    +from minilucene.storage.segment_store import SegmentStore
+
+     _SCHEMA_FORMAT_VERSION = 1
+
+    @@ -114,3 +116,15 @@ class Index:
+             from minilucene.writer import IndexWriter
+
+             return IndexWriter(self, **options)
+    +
+    +    def open_reader(self) -> IndexReader:
+    +        manifest = self.manifest()
+    +        segment_store = SegmentStore(self.path)
+    +        segments = tuple(
+    +            segment_store.open(
+    +                segment.segment_generation,
+    +                manifest.schema_fingerprint,
+    +            )
+    +            for segment in manifest.segments
+    +        )
+    +        return IndexReader(self.schema, segments)
+    ```
+
+??? note "File diff: src/minilucene/reader.py"
+    ```diff
+    diff --git a/src/minilucene/reader.py b/src/minilucene/reader.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..d578cec6147ebbc5fbbcfb37a335ee313daeb35f
+    --- /dev/null
+    +++ b/src/minilucene/reader.py
+    @@ -0,0 +1,18 @@
+    +from minilucene.query.model import Query
+    +from minilucene.schema import Schema
+    +from minilucene.search.collector import TopDocs
+    +from minilucene.search.reader import ReaderView
+    +from minilucene.search.searcher import IndexSearcher
+    +from minilucene.storage.image import SegmentImage
+    +
+    +
+    +class IndexReader(ReaderView):
+    +    def __init__(
+    +        self,
+    +        schema: Schema,
+    +        segments: tuple[SegmentImage, ...],
+    +    ) -> None:
+    +        super().__init__(schema, segments)  # type: ignore[arg-type]
+    +
+    +    def search(self, query: Query, *, top_k: int = 10) -> TopDocs:
+    +        return IndexSearcher(self).search(query, top_k=top_k)
+    ```
+
+??? note "File diff: src/minilucene/writer.py"
+    ```diff
+    diff --git a/src/minilucene/writer.py b/src/minilucene/writer.py
+    index c65a518cb4d53841e84c2a09c0431d19158a8579..5746535d16c379f6a64cf1b29a0a9cc674879048 100644
+    --- a/src/minilucene/writer.py
+    +++ b/src/minilucene/writer.py
+    @@ -7,6 +7,11 @@ from typing import TYPE_CHECKING, Self
+     from minilucene.errors import WriterAlreadyOpenError
+     from minilucene.index.memory import RamIndexBuilder
+     from minilucene.storage.image import SegmentImage
+    +from minilucene.storage.manifest import (
+    +    Manifest,
+    +    ManifestStore,
+    +    SegmentCommit,
+    +)
+     from minilucene.storage.segment_store import (
+         SegmentDescriptor,
+         SegmentStore,
+    @@ -57,6 +62,7 @@ class IndexWriter:
+                 os.close(descriptor)
+             manifest = index.manifest()
+             self._segment_store = SegmentStore(index.path)
+    +        self._manifest_store = ManifestStore(index.path)
+             self._buffer = RamIndexBuilder(index.schema)
+             self._segment_generations = list(manifest.segment_generations)
+             self._next_segment_generation = (
+    @@ -107,6 +113,25 @@ class IndexWriter:
+             self._buffer = RamIndexBuilder(self.index.schema)
+             return descriptor
+
+    +    def commit(self) -> Manifest:
+    +        self._ensure_open()
+    +        self.flush()
+    +        for generation in self._segment_generations:
+    +            self._segment_store.open(
+    +                generation, self.index.schema.fingerprint
+    +            )
+    +        current = self.index.manifest()
+    +        manifest = Manifest.next_from(
+    +            current,
+    +            segments=tuple(
+    +                SegmentCommit(segment_generation=generation)
+    +                for generation in self._segment_generations
+    +            ),
+    +            next_segment_generation=self._next_segment_generation,
+    +        )
+    +        self._manifest_store.write_atomic(manifest)
+    +        return manifest
+    +
+         def close(self) -> None:
+             if self._closed:
+                 return
+    ```
+
+**What it is and why it appears**
+
+Commit is a publication protocol over already durable segment children; reopen reconstructs an index strictly from the current manifest.
+
+**Runtime role**
+
+The writer flushes, prepares all referenced children, writes the next manifest, atomically swaps the root, and advances committed generation only after success.
+
+**Statement understanding**
+
+Fsyncing children before the root and the directory after replacement establishes the crash-ordering proof.
+
+#### Package, fixture, and project support
+
+Keep exports, test corpora, dependencies, and the runtime environment reproducible.
+
+??? note "Supporting file diffs (1 file)"
+    **`src/minilucene/__init__.py`**
+
+    ```diff
+    diff --git a/src/minilucene/__init__.py b/src/minilucene/__init__.py
+    index 0c0404820979d3e11380105fc7aeeadd1bc1ef57..26578c0be111c3c4f0dbb9c9848861796ee3d2e9 100644
+    --- a/src/minilucene/__init__.py
+    +++ b/src/minilucene/__init__.py
+    @@ -1,9 +1,11 @@
+     from minilucene.index.directory import Index
+     from minilucene.index.memory import MemoryIndex
+    +from minilucene.reader import IndexReader
+     from minilucene.schema import KeywordField, Schema, StoredField, TextField
+
+     __all__ = [
+         "Index",
+    +    "IndexReader",
+         "KeywordField",
+         "MemoryIndex",
+         "Schema",
+    ```
+
+
+### Verification evidence
+
+Run `uv run pytest -q $(cat journey/stages/15-atomic-commit/tests.txt)`, then use Journey Check to compare the cumulative source with the canonical Stage.
+
+### Durable takeaways
+
+Fsyncing children before the root and the directory after replacement establishes the crash-ordering proof.
+
+### Explain it in your own words
+
+Explain the failure window this Stage closes, how runtime state changes, and which statement protects the boundary.
+
+### Textbook
+
+[Chapter 7](https://github.com/system-in-miniature/mini-lucene/blob/main/docs/tutorial/07-commit-atomicity.md)
+
+[Complete reference patch / 完整参考补丁](https://github.com/system-in-miniature/mini-lucene/blob/main/journey/stages/15-atomic-commit/stage.patch)

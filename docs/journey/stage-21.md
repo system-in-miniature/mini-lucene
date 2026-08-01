@@ -1,0 +1,378 @@
+# Stage 21 · Explicit segment merge
+
+### Goal
+
+Build explicit segment merge and explain its boundary from an executable counterexample, runtime state, and the critical statement.
+
+??? note "Deliverable files"
+    - `src/minilucene/merge.py`
+    - `src/minilucene/writer.py`
+    - `tests/nrt/test_segment_merge.py`
+
+### The problem at this point
+
+Many immutable segments increase lookup and file overhead, but merging must not resurrect deleted documents or renumber visible history incorrectly.
+
+### Test contract
+
+#### See the failure first
+
+Tests merge segments containing deletions, retain an old reader, inject output failure, and compare results before and after publication.
+
+??? note "File diff: tests/nrt/test_segment_merge.py"
+    ```diff
+    diff --git a/tests/nrt/test_segment_merge.py b/tests/nrt/test_segment_merge.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..4a122c7ef2c0b83c402029d72d154b5bea9acca0
+    --- /dev/null
+    +++ b/tests/nrt/test_segment_merge.py
+    @@ -0,0 +1,104 @@
+    +import pytest
+    +
+    +from minilucene import Index, KeywordField, Schema, TextField
+    +from minilucene.query import PhraseQuery, TermQuery
+    +from minilucene.storage.filesystem import FileSystemOps
+    +
+    +
+    +def build_index(tmp_path):
+    +    index = Index.create(
+    +        tmp_path,
+    +        Schema(
+    +            id=KeywordField(stored=True),
+    +            body=TextField(stored=False),
+    +        ),
+    +    )
+    +    with index.writer() as writer:
+    +        writer.add_document(id="1", body="kafka kafka replicas")
+    +        writer.flush()
+    +        writer.add_document(id="2", body="deleted document")
+    +        writer.flush()
+    +        writer.add_document(id="3", body="kafka follower replicas")
+    +        writer.commit()
+    +    return index
+    +
+    +
+    +def snapshot_results(reader):
+    +    results = {}
+    +    for name, query in (
+    +        ("term", TermQuery("body", "kafka")),
+    +        ("phrase", PhraseQuery("body", ("follower", "replicas"))),
+    +    ):
+    +        top_docs = reader.search(query, top_k=10)
+    +        results[name] = (
+    +            top_docs.total_hits,
+    +            tuple(hit.stored_fields["id"] for hit in top_docs.hits),
+    +            tuple(hit.score for hit in top_docs.hits),
+    +        )
+    +    return results
+    +
+    +
+    +def test_merge_skips_deletes_and_preserves_search_results(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        writer.delete_by_term("id", "2")
+    +        before = writer.refresh()
+    +        expected = snapshot_results(before)
+    +        merged = writer.merge(writer.segment_generations)
+    +        after = writer.refresh()
+    +
+    +    assert merged.max_doc == before.num_live_docs
+    +    actual = snapshot_results(after)
+    +    assert actual.keys() == expected.keys()
+    +    for name in expected:
+    +        assert actual[name][:2] == expected[name][:2]
+    +        assert actual[name][2] == pytest.approx(expected[name][2])
+    +    assert after.snapshot.segments[0].generation == merged.generation
+    +    assert after.snapshot.segments[0].image.max_doc == 2
+    +    assert tuple(after.snapshot.segments[0].image.stored_documents) == (0, 1)
+    +
+    +
+    +class PostingWriteFailingFileSystem(FileSystemOps):
+    +    def write_bytes(self, path, data):
+    +        if path.name == "postings.bin":
+    +            raise OSError("injected merge write failure")
+    +        super().write_bytes(path, data)
+    +
+    +
+    +def test_merge_failure_leaves_writer_segment_set_unchanged(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        before_generations = writer.segment_generations
+    +        before = snapshot_results(writer.refresh())
+    +        writer._segment_store.fs = PostingWriteFailingFileSystem()
+    +        with pytest.raises(OSError, match="injected"):
+    +            writer.merge(before_generations)
+    +        assert writer.segment_generations == before_generations
+    +        writer._segment_store.fs = FileSystemOps()
+    +        assert snapshot_results(writer.refresh()) == before
+    +
+    +
+    +@pytest.mark.parametrize(
+    +    "selected",
+    +    [(1,), (1, 1), (99, 1)],
+    +)
+    +def test_merge_rejects_invalid_selection_without_mutation(tmp_path, selected):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        before = writer.segment_generations
+    +        with pytest.raises(ValueError):
+    +            writer.merge(selected)
+    +        assert writer.segment_generations == before
+    +
+    +
+    +def test_merged_segment_commits_and_reopens(tmp_path):
+    +    index = build_index(tmp_path)
+    +    with index.writer() as writer:
+    +        writer.delete_by_term("id", "2")
+    +        writer.merge(writer.segment_generations)
+    +        manifest = writer.commit()
+    +    assert len(manifest.segments) == 1
+    +    reader = Index.open(tmp_path).open_reader()
+    +    assert reader.num_live_docs == 2
+    +    assert reader.search(TermQuery("body", "deleted"), top_k=10).total_hits == 0
+    +    assert reader.search(TermQuery("body", "kafka"), top_k=10).total_hits == 2
+    ```
+
+**What this test locks**
+
+These tests lock the Stage's happy path, boundary conditions, visible failures, and recovery invariants.
+
+**How it constructs the counterexample**
+
+Tests merge segments containing deletions, retain an old reader, inject output failure, and compare results before and after publication.
+
+**Key test statement**
+
+```python
+assert merged.max_doc == before.num_live_docs
+```
+
+This assertion binds the observable result to the Stage's state, visibility, or durability boundary rather than merely checking that a call returned.
+
+**What a failure means**
+
+A failure means the implementation crossed the semantic, ordering, ownership, or recovery boundary just introduced.
+
+### Basic concepts
+
+Merge captures immutable inputs, copies only live documents into a new dense segment, and swaps writer ownership after output publication.
+
+### Why this mechanism is necessary
+
+Many immutable segments increase lookup and file overhead, but merging must not resurrect deleted documents or renumber visible history incorrectly. Without an explicit boundary, every later mechanism would depend on accidental behavior.
+
+### Runtime mental model
+
+The writer pins input generations, builds a doc-ID remap and output image, publishes it, then replaces current segment references and retires inputs.
+
+### Mechanism blocks
+
+#### Explicit segment merge mechanism
+
+The writer pins input generations, builds a doc-ID remap and output image, publishes it, then replaces current segment references and retires inputs.
+
+??? note "File diff: src/minilucene/merge.py"
+    ```diff
+    diff --git a/src/minilucene/merge.py b/src/minilucene/merge.py
+    new file mode 100644
+    index 0000000000000000000000000000000000000000..53e32b8a0d2d8c2e789f345f884e040543427fda
+    --- /dev/null
+    +++ b/src/minilucene/merge.py
+    @@ -0,0 +1,73 @@
+    +from collections import defaultdict
+    +
+    +from minilucene.index.postings import Posting
+    +from minilucene.storage.image import SegmentImage
+    +
+    +
+    +def merge_segment_images(
+    +    *,
+    +    generation: int,
+    +    schema_fingerprint: str,
+    +    segments: tuple[tuple[SegmentImage, frozenset[int]], ...],
+    +) -> SegmentImage:
+    +    doc_id_maps: list[dict[int, int]] = []
+    +    stored_documents: dict[int, dict[str, str]] = {}
+    +    next_doc_id = 0
+    +    all_fields = {
+    +        field
+    +        for image, _ in segments
+    +        for field in image.field_lengths
+    +    }
+    +    field_lengths: dict[str, list[int]] = {
+    +        field: [] for field in all_fields
+    +    }
+    +
+    +    for image, live_docs in segments:
+    +        mapping: dict[int, int] = {}
+    +        for old_doc_id in sorted(live_docs):
+    +            mapping[old_doc_id] = next_doc_id
+    +            stored_documents[next_doc_id] = dict(
+    +                image.stored_documents[old_doc_id]
+    +            )
+    +            for field in all_fields:
+    +                lengths = image.field_lengths.get(field)
+    +                field_lengths[field].append(
+    +                    lengths[old_doc_id] if lengths is not None else 0
+    +                )
+    +            next_doc_id += 1
+    +        doc_id_maps.append(mapping)
+    +
+    +    postings: dict[str, dict[str, list[Posting]]] = defaultdict(
+    +        lambda: defaultdict(list)
+    +    )
+    +    for (image, _), mapping in zip(
+    +        segments, doc_id_maps, strict=True
+    +    ):
+    +        for field, terms in image.postings.items():
+    +            for term, term_postings in terms.items():
+    +                for posting in term_postings:
+    +                    if posting.doc_id in mapping:
+    +                        postings[field][term].append(
+    +                            Posting(
+    +                                doc_id=mapping[posting.doc_id],
+    +                                term_frequency=posting.term_frequency,
+    +                                positions=posting.positions,
+    +                            )
+    +                        )
+    +
+    +    return SegmentImage(
+    +        generation=generation,
+    +        schema_fingerprint=schema_fingerprint,
+    +        stored_documents=stored_documents,
+    +        postings={
+    +            field: {
+    +                term: tuple(term_postings)
+    +                for term, term_postings in terms.items()
+    +            }
+    +            for field, terms in postings.items()
+    +        },
+    +        field_lengths={
+    +            field: tuple(lengths)
+    +            for field, lengths in field_lengths.items()
+    +        },
+    +    )
+    ```
+
+??? note "File diff: src/minilucene/writer.py"
+    ```diff
+    diff --git a/src/minilucene/writer.py b/src/minilucene/writer.py
+    index b703e8bb89d69b5a628e36e4e50f2da52fc8df5f..be777588c096c928c16450fb2e285d8d2e6b623b 100644
+    --- a/src/minilucene/writer.py
+    +++ b/src/minilucene/writer.py
+    @@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
+
+     from minilucene.errors import WriterAlreadyOpenError
+     from minilucene.index.memory import RamIndexBuilder
+    +from minilucene.merge import merge_segment_images
+     from minilucene.reader import IndexReader
+     from minilucene.storage.image import SegmentImage
+     from minilucene.storage.live_docs import LiveDocsStore
+    @@ -265,6 +266,76 @@ class IndexWriter:
+             self._buffer_live_docs = next_buffer_live_docs
+             return deleted
+
+    +    def merge(
+    +        self, segment_generations: tuple[int, ...] | list[int]
+    +    ) -> SegmentDescriptor:
+    +        self._ensure_open()
+    +        selected = tuple(segment_generations)
+    +        if len(selected) < 2:
+    +            raise ValueError("merge requires at least two segments")
+    +        if len(set(selected)) != len(selected):
+    +            raise ValueError("merge segment generations must be unique")
+    +        current_set = set(self._segment_generations)
+    +        if any(generation not in current_set for generation in selected):
+    +            raise ValueError("merge references unknown segment")
+    +
+    +        selected_set = set(selected)
+    +        ordered_selected = tuple(
+    +            generation
+    +            for generation in self._segment_generations
+    +            if generation in selected_set
+    +        )
+    +        captured = tuple(
+    +            (
+    +                self._segment_store.open(
+    +                    generation, self.index.schema.fingerprint
+    +                ),
+    +                self._live_docs[generation],
+    +            )
+    +            for generation in ordered_selected
+    +        )
+    +
+    +        generation = self._next_segment_generation
+    +        while self._segment_store.generation_exists(generation):
+    +            generation += 1
+    +        image = merge_segment_images(
+    +            generation=generation,
+    +            schema_fingerprint=self.index.schema.fingerprint,
+    +            segments=captured,
+    +        )
+    +        descriptor = self._segment_store.publish(image)
+    +
+    +        insertion_index = min(
+    +            self._segment_generations.index(item)
+    +            for item in ordered_selected
+    +        )
+    +        next_generations: list[int] = []
+    +        for index, current in enumerate(self._segment_generations):
+    +            if index == insertion_index:
+    +                next_generations.append(generation)
+    +            if current not in selected_set:
+    +                next_generations.append(current)
+    +
+    +        next_live_docs = {
+    +            item: mask
+    +            for item, mask in self._live_docs.items()
+    +            if item not in selected_set
+    +        }
+    +        next_live_docs[generation] = frozenset(range(image.max_doc))
+    +        next_metadata = {
+    +            item: metadata
+    +            for item, metadata in self._live_docs_metadata.items()
+    +            if item not in selected_set
+    +        }
+    +        next_metadata[generation] = None
+    +
+    +        self._segment_generations = next_generations
+    +        self._live_docs = next_live_docs
+    +        self._live_docs_metadata = next_metadata
+    +        self._dirty_live_docs.difference_update(selected_set)
+    +        self._next_segment_generation = generation + 1
+    +        return descriptor
+    +
+         def commit(self) -> Manifest:
+             self._ensure_open()
+             self.flush()
+    ```
+
+**What it is and why it appears**
+
+Merge captures immutable inputs, copies only live documents into a new dense segment, and swaps writer ownership after output publication.
+
+**Runtime role**
+
+The writer pins input generations, builds a doc-ID remap and output image, publishes it, then replaces current segment references and retires inputs.
+
+**Statement understanding**
+
+Publishing output before swapping state makes failure leave the old segment set authoritative and old readers valid.
+
+### Verification evidence
+
+Run `uv run pytest -q $(cat journey/stages/21-segment-merge/tests.txt)`, then use Journey Check to compare the cumulative source with the canonical Stage.
+
+### Durable takeaways
+
+Publishing output before swapping state makes failure leave the old segment set authoritative and old readers valid.
+
+### Explain it in your own words
+
+Explain the failure window this Stage closes, how runtime state changes, and which statement protects the boundary.
+
+### Textbook
+
+[Chapter 10](https://github.com/system-in-miniature/mini-lucene/blob/main/docs/tutorial/10-merge-and-beyond.md)
+
+[Complete reference patch / 完整参考补丁](https://github.com/system-in-miniature/mini-lucene/blob/main/journey/stages/21-segment-merge/stage.patch)

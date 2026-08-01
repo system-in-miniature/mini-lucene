@@ -3,8 +3,23 @@ name = "MiniLucene"
 package = "minilucene"
 repository_url = "https://github.com/system-in-miniature/mini-lucene"
 base = "3751ebd^"
-owned_roots = ["src/minilucene", "tests/acceptance", "tests/contract", "tests/evaluation", "tests/fixtures", "tests/helpers", "tests/nrt", "tests/storage", "tests/support", "tests/unit"]
-owned_files = ["pyproject.toml", "uv.lock", "tests/test_public_surface.py"]
+owned_roots = ["src/minilucene", "tests/acceptance", "tests/evaluation", "tests/fixtures", "tests/helpers", "tests/nrt", "tests/storage", "tests/support", "tests/unit"]
+owned_files = [
+  "pyproject.toml",
+  "uv.lock",
+  "tests/test_public_surface.py",
+  "tests/contract/test_cli.py",
+  "tests/contract/test_collect_then_fetch.py",
+  "tests/contract/test_disk_search.py",
+  "tests/contract/test_highlighting.py",
+  "tests/contract/test_index_lifecycle.py",
+  "tests/contract/test_memory_index.py",
+  "tests/contract/test_memory_search.py",
+  "tests/contract/test_prefix_rewrite.py",
+  "tests/contract/test_query_matching.py",
+  "tests/contract/test_ranking.py",
+  "tests/contract/test_schema.py",
+]
 excluded_files = ["tests/contract/test_behavior_matrix.py"]
 
 [[stages]]
