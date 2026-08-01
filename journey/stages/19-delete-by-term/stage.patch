@@ -1,0 +1,407 @@
+diff --git a/src/minilucene/index/directory.py b/src/minilucene/index/directory.py
+index 5dfe05ef75db082b661a732e8c3877243cca402a..58b7896fd4b30befa163456645075090df8c633d 100644
+--- a/src/minilucene/index/directory.py
++++ b/src/minilucene/index/directory.py
+@@ -9,6 +9,7 @@ from minilucene.errors import (
+ from minilucene.reader import IndexReader
+ from minilucene.schema import Schema
+ from minilucene.storage.filesystem import FileSystemOps
++from minilucene.storage.live_docs import LiveDocsStore
+ from minilucene.storage.manifest import Manifest, ManifestStore
+ from minilucene.storage.segment_store import SegmentStore
+ 
+@@ -127,8 +128,23 @@ class Index:
+             )
+             for segment in manifest.segments
+         )
++        live_docs_store = LiveDocsStore(self.path)
++        live_docs = tuple(
++            frozenset(range(image.max_doc))
++            if segment.live_docs_generation is None
++            else live_docs_store.read(
++                segment_generation=segment.segment_generation,
++                live_docs_generation=segment.live_docs_generation,
++                expected_checksum=segment.live_docs_checksum or "",
++                max_doc=image.max_doc,
++            )
++            for segment, image in zip(
++                manifest.segments, segments, strict=True
++            )
++        )
+         return IndexReader(
+             self.schema,
+             segments,
++            live_docs,
+             commit_generation=manifest.commit_generation,
+         )
+diff --git a/src/minilucene/index/memory.py b/src/minilucene/index/memory.py
+index e54e6f3d2ea5f43ad17365449b12b570030e7a3d..7e9b119c4d85268e2857f45122a35ac7228eb3ae 100644
+--- a/src/minilucene/index/memory.py
++++ b/src/minilucene/index/memory.py
+@@ -37,6 +37,7 @@ class PreparedDocument:
+ class RamIndexBuilder:
+     def __init__(self, schema: Schema) -> None:
+         self.schema = schema
++        self._documents: list[FrozenDocument] = []
+         self._stored_documents: list[FrozenDocument] = []
+         self._field_lengths: dict[str, list[int]] = {
+             name: [] for name, field in schema.items() if field.indexed
+@@ -54,6 +55,10 @@ class RamIndexBuilder:
+     def posting_count(self) -> int:
+         return self._posting_count
+ 
++    @property
++    def documents(self) -> tuple[FrozenDocument, ...]:
++        return tuple(self._documents)
++
+     def prepare_document(
+         self, values: Mapping[str, object]
+     ) -> PreparedDocument:
+@@ -80,6 +85,7 @@ class RamIndexBuilder:
+         if prepared.schema_fingerprint != self.schema.fingerprint:
+             raise ValueError("prepared document schema does not match builder")
+         doc_id = self.document_count
++        self._documents.append(prepared.document)
+         self._stored_documents.append(prepared.stored)
+         for name, lengths in self._field_lengths.items():
+             tokens = prepared.analyzed.get(name, ())
+@@ -105,6 +111,12 @@ class RamIndexBuilder:
+     def add_document(self, values: Mapping[str, object]) -> int:
+         return self.add_prepared(self.prepare_document(values))
+ 
++    def matching_doc_ids(self, field: str, term: str) -> frozenset[int]:
++        return frozenset(
++            posting.doc_id
++            for posting in self._postings.get(field, {}).get(term, ())
++        )
++
+     def freeze(self, *, generation: int) -> MemorySegment:
+         if generation < 0:
+             raise ValueError("segment generation must be non-negative")
+diff --git a/src/minilucene/search/reader.py b/src/minilucene/search/reader.py
+index 97cd1d7f6bbf5f8dee41f0c891a0b9564d31e5e7..2f80ce0073fdfabc8e1581bb29133003c20b6eea 100644
+--- a/src/minilucene/search/reader.py
++++ b/src/minilucene/search/reader.py
+@@ -50,6 +50,10 @@ class ReaderView:
+         )
+         self.corpus_stats = self._build_corpus_stats()
+ 
++    @property
++    def num_live_docs(self) -> int:
++        return len(self.live_doc_ids)
++
+     def _resolve(self, doc_id: int) -> tuple[int, MemorySegment, int]:
+         if doc_id < 0 or doc_id >= self.max_doc:
+             raise IndexError(f"document ID outside reader: {doc_id}")
+diff --git a/src/minilucene/storage/live_docs.py b/src/minilucene/storage/live_docs.py
+index 7d520e8da9556aa5514f328cb983359f763154a6..6739b030a8a2a229c17e8efa3e91df2c3b926202 100644
+--- a/src/minilucene/storage/live_docs.py
++++ b/src/minilucene/storage/live_docs.py
+@@ -126,6 +126,16 @@ class LiveDocsStore:
+             path=destination.relative_to(self.root),
+         )
+ 
++    def generation_exists(
++        self, segment_generation: int, live_docs_generation: int
++    ) -> bool:
++        return self.fs.exists(
++            self.root
++            / "segments"
++            / self._segment_name(segment_generation)
++            / self._live_name(live_docs_generation)
++        )
++
+     def read(
+         self,
+         *,
+diff --git a/src/minilucene/writer.py b/src/minilucene/writer.py
+index baae188c44b902865368f15986cb4f69e6973aa0..214a9fd68607a3051d3725739b590a3df345cb8f 100644
+--- a/src/minilucene/writer.py
++++ b/src/minilucene/writer.py
+@@ -8,6 +8,7 @@ from minilucene.errors import WriterAlreadyOpenError
+ from minilucene.index.memory import RamIndexBuilder
+ from minilucene.reader import IndexReader
+ from minilucene.storage.image import SegmentImage
++from minilucene.storage.live_docs import LiveDocsStore
+ from minilucene.storage.manifest import (
+     Manifest,
+     ManifestStore,
+@@ -64,11 +65,45 @@ class IndexWriter:
+         manifest = index.manifest()
+         self._segment_store = SegmentStore(index.path)
+         self._manifest_store = ManifestStore(index.path)
++        self._live_docs_store = LiveDocsStore(index.path)
+         self._buffer = RamIndexBuilder(index.schema)
++        self._buffer_live_docs: set[int] = set()
+         self._segment_generations = list(manifest.segment_generations)
+         self._next_segment_generation = (
+             manifest.next_segment_generation
+         )
++        self._live_docs: dict[int, frozenset[int]] = {}
++        self._live_docs_metadata: dict[
++            int, tuple[int, str] | None
++        ] = {}
++        for segment_commit in manifest.segments:
++            image = self._segment_store.open(
++                segment_commit.segment_generation,
++                index.schema.fingerprint,
++            )
++            if segment_commit.live_docs_generation is None:
++                mask = frozenset(range(image.max_doc))
++                metadata = None
++            else:
++                mask = self._live_docs_store.read(
++                    segment_generation=segment_commit.segment_generation,
++                    live_docs_generation=(
++                        segment_commit.live_docs_generation
++                    ),
++                    expected_checksum=(
++                        segment_commit.live_docs_checksum or ""
++                    ),
++                    max_doc=image.max_doc,
++                )
++                metadata = (
++                    segment_commit.live_docs_generation,
++                    segment_commit.live_docs_checksum or "",
++                )
++            self._live_docs[segment_commit.segment_generation] = mask
++            self._live_docs_metadata[
++                segment_commit.segment_generation
++            ] = metadata
++        self._dirty_live_docs: set[int] = set()
+ 
+     @property
+     def segment_generations(self) -> tuple[int, ...]:
+@@ -96,24 +131,36 @@ class IndexWriter:
+             >= self.flush_policy.max_postings
+         ):
+             self.flush()
+-        return self._buffer.add_prepared(prepared)
++        doc_id = self._buffer.add_prepared(prepared)
++        self._buffer_live_docs.add(doc_id)
++        return doc_id
+ 
+     def flush(self) -> SegmentDescriptor | None:
+         self._ensure_open()
+         if self.buffered_document_count == 0:
+             return None
++        compacted = RamIndexBuilder(self.index.schema)
++        for doc_id in sorted(self._buffer_live_docs):
++            compacted.add_document(dict(self._buffer.documents[doc_id]))
++        if compacted.document_count == 0:
++            self._buffer = RamIndexBuilder(self.index.schema)
++            self._buffer_live_docs = set()
++            return None
+         generation = self._next_segment_generation
+         while self._segment_store.generation_exists(generation):
+             generation += 1
+         image = SegmentImage.from_memory_segment(
+             generation=generation,
+             schema_fingerprint=self.index.schema.fingerprint,
+-            segment=self._buffer.freeze(generation=0),
++            segment=compacted.freeze(generation=0),
+         )
+         descriptor = self._segment_store.publish(image)
+         self._segment_generations.append(generation)
++        self._live_docs[generation] = frozenset(range(image.max_doc))
++        self._live_docs_metadata[generation] = None
+         self._next_segment_generation = generation + 1
+         self._buffer = RamIndexBuilder(self.index.schema)
++        self._buffer_live_docs = set()
+         return descriptor
+ 
+     def refresh(self) -> IndexReader:
+@@ -125,12 +172,56 @@ class IndexWriter:
+             )
+             for generation in self._segment_generations
+         )
++        live_docs = tuple(
++            self._live_docs[generation]
++            for generation in self._segment_generations
++        )
+         return IndexReader(
+             self.index.schema,
+             segments,
++            live_docs,
+             commit_generation=None,
+         )
+ 
++    def delete_by_term(self, field: str, term: str) -> int:
++        self._ensure_open()
++        if field not in self.index.schema:
++            raise ValueError(f"unknown field: {field}")
++        if not self.index.schema[field].indexed:
++            raise ValueError(f"field is not indexed: {field}")
++        if not isinstance(term, str) or not term:
++            raise ValueError("delete term must be a non-empty string")
++
++        derived_masks = dict(self._live_docs)
++        changed_generations: set[int] = set()
++        deleted = 0
++        for generation in self._segment_generations:
++            image = self._segment_store.open(
++                generation, self.index.schema.fingerprint
++            )
++            matches = {
++                posting.doc_id
++                for posting in image.postings.get(field, {}).get(term, ())
++            }
++            current = derived_masks[generation]
++            removed = current & matches
++            if removed:
++                derived_masks[generation] = current - removed
++                changed_generations.add(generation)
++                deleted += len(removed)
++
++        buffered_matches = (
++            self._buffer.matching_doc_ids(field, term)
++            & self._buffer_live_docs
++        )
++        next_buffer_live_docs = self._buffer_live_docs - buffered_matches
++        deleted += len(buffered_matches)
++
++        self._live_docs = derived_masks
++        self._dirty_live_docs.update(changed_generations)
++        self._buffer_live_docs = next_buffer_live_docs
++        return deleted
++
+     def commit(self) -> Manifest:
+         self._ensure_open()
+         self.flush()
+@@ -139,15 +230,58 @@ class IndexWriter:
+                 generation, self.index.schema.fingerprint
+             )
+         current = self.index.manifest()
++        pending_metadata = dict(self._live_docs_metadata)
++        segment_commits: list[SegmentCommit] = []
++        for generation in self._segment_generations:
++            image = self._segment_store.open(
++                generation, self.index.schema.fingerprint
++            )
++            live_docs = self._live_docs[generation]
++            metadata = pending_metadata[generation]
++            if live_docs != frozenset(range(image.max_doc)):
++                if generation in self._dirty_live_docs:
++                    live_generation = (
++                        metadata[0] + 1 if metadata is not None else 1
++                    )
++                    while self._live_docs_store.generation_exists(
++                        generation, live_generation
++                    ):
++                        live_generation += 1
++                    descriptor = self._live_docs_store.publish(
++                        segment_generation=generation,
++                        live_docs_generation=live_generation,
++                        max_doc=image.max_doc,
++                        live_docs=live_docs,
++                    )
++                    metadata = (
++                        descriptor.live_docs_generation,
++                        descriptor.checksum,
++                    )
++                    pending_metadata[generation] = metadata
++                if metadata is None:
++                    raise RuntimeError(
++                        "deleted segment lacks live-doc metadata"
++                    )
++                segment_commits.append(
++                    SegmentCommit(
++                        segment_generation=generation,
++                        live_docs_generation=metadata[0],
++                        live_docs_checksum=metadata[1],
++                    )
++                )
++            else:
++                segment_commits.append(
++                    SegmentCommit(segment_generation=generation)
++                )
++
+         manifest = Manifest.next_from(
+             current,
+-            segments=tuple(
+-                SegmentCommit(segment_generation=generation)
+-                for generation in self._segment_generations
+-            ),
++            segments=tuple(segment_commits),
+             next_segment_generation=self._next_segment_generation,
+         )
+         self._manifest_store.write_atomic(manifest)
++        self._live_docs_metadata = pending_metadata
++        self._dirty_live_docs.clear()
+         return manifest
+ 
+     def close(self) -> None:
+diff --git a/tests/nrt/test_delete_by_term.py b/tests/nrt/test_delete_by_term.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6687575616f43115daa8b347103ecd47b77ba36f
+--- /dev/null
++++ b/tests/nrt/test_delete_by_term.py
+@@ -0,0 +1,68 @@
++from minilucene import Index, KeywordField, Schema, TextField
++from minilucene.query import TermQuery
++
++
++def build_index(tmp_path):
++    return Index.create(
++        tmp_path,
++        Schema(
++            id=KeywordField(stored=True),
++            body=TextField(stored=True),
++        ),
++    )
++
++
++def test_delete_matches_buffered_and_flushed_documents(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="same", body="first")
++        writer.flush()
++        writer.add_document(id="same", body="second")
++        assert writer.delete_by_term("id", "same") == 2
++        reader = writer.refresh()
++        assert reader.num_live_docs == 0
++        assert reader.search(TermQuery("body", "first"), top_k=10).total_hits == 0
++        assert reader.search(TermQuery("body", "second"), top_k=10).total_hits == 0
++
++
++def test_old_reader_keeps_deleted_document_and_new_stats_exclude_it(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="rare")
++        writer.add_document(id="2", body="common")
++        writer.commit()
++    old = index.open_reader()
++    with index.writer() as writer:
++        assert writer.delete_by_term("id", "1") == 1
++        new = writer.refresh()
++    assert old.search(TermQuery("body", "rare"), top_k=10).total_hits == 1
++    assert new.search(TermQuery("body", "rare"), top_k=10).total_hits == 0
++    assert new.corpus_stats.live_doc_count == 1
++
++
++def test_repeated_delete_counts_only_newly_deleted_documents(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="value")
++        writer.flush()
++        assert writer.delete_by_term("id", "1") == 1
++        assert writer.delete_by_term("id", "1") == 0
++
++
++def test_committed_delete_survives_reopen_and_references_live_docs(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="remove")
++        writer.add_document(id="2", body="keep")
++        writer.commit()
++    with index.writer() as writer:
++        writer.delete_by_term("id", "1")
++        manifest = writer.commit()
++
++    segment_commit = manifest.segments[0]
++    assert segment_commit.live_docs_generation == 1
++    assert segment_commit.live_docs_checksum
++    reopened = Index.open(tmp_path).open_reader()
++    assert reopened.num_live_docs == 1
++    assert reopened.search(TermQuery("body", "remove"), top_k=10).total_hits == 0
++    assert reopened.search(TermQuery("body", "keep"), top_k=10).total_hits == 1

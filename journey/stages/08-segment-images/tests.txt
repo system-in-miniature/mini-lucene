@@ -1,0 +1,1 @@
+tests/unit/storage/test_segment_image.py

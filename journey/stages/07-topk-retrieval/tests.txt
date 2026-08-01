@@ -1,0 +1,3 @@
+tests/acceptance/test_phase1_retrieval_kernel.py
+tests/contract/test_memory_search.py
+tests/unit/search/test_topk.py

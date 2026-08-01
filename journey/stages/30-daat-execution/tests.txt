@@ -1,0 +1,4 @@
+tests/contract/test_collect_then_fetch.py
+tests/unit/search/test_daat_scorer.py
+tests/unit/search/test_iterators.py
+tests/unit/search/test_topk.py

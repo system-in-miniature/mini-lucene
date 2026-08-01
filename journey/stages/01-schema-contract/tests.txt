@@ -1,0 +1,2 @@
+tests/contract/test_schema.py
+tests/test_public_surface.py

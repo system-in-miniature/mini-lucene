@@ -1,0 +1,333 @@
+diff --git a/src/minilucene/__init__.py b/src/minilucene/__init__.py
+index e853a4ef756dd11aabbc128d9f98e09568598771..0c0404820979d3e11380105fc7aeeadd1bc1ef57 100644
+--- a/src/minilucene/__init__.py
++++ b/src/minilucene/__init__.py
+@@ -1,7 +1,9 @@
++from minilucene.index.directory import Index
+ from minilucene.index.memory import MemoryIndex
+ from minilucene.schema import KeywordField, Schema, StoredField, TextField
+ 
+ __all__ = [
++    "Index",
+     "KeywordField",
+     "MemoryIndex",
+     "Schema",
+diff --git a/src/minilucene/errors.py b/src/minilucene/errors.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a6776bb63a82151a509cdd5282c66f0ba0f7a141
+--- /dev/null
++++ b/src/minilucene/errors.py
+@@ -0,0 +1,18 @@
++class MiniLuceneError(Exception):
++    """Base exception for MiniLucene domain failures."""
++
++
++class IndexAlreadyExistsError(MiniLuceneError):
++    pass
++
++
++class IndexNotFoundError(MiniLuceneError):
++    pass
++
++
++class SchemaMismatchError(MiniLuceneError):
++    pass
++
++
++class WriterAlreadyOpenError(MiniLuceneError):
++    pass
+diff --git a/src/minilucene/index/__init__.py b/src/minilucene/index/__init__.py
+index e0dbe8b0b479603f9a19cdcc1d49d7a66263f698..85a6059c282d2fdaa0ae06a91c58d00f97f1a929 100644
+--- a/src/minilucene/index/__init__.py
++++ b/src/minilucene/index/__init__.py
+@@ -1,4 +1,11 @@
++from minilucene.index.directory import Index
+ from minilucene.index.memory import MemoryIndex, RamIndexBuilder
+ from minilucene.index.postings import MemorySegment, Posting
+ 
+-__all__ = ["MemoryIndex", "MemorySegment", "Posting", "RamIndexBuilder"]
++__all__ = [
++    "Index",
++    "MemoryIndex",
++    "MemorySegment",
++    "Posting",
++    "RamIndexBuilder",
++]
+diff --git a/src/minilucene/index/directory.py b/src/minilucene/index/directory.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1fd3f3bc09ddb1f20252c1fe801c97eac23ff0f6
+--- /dev/null
++++ b/src/minilucene/index/directory.py
+@@ -0,0 +1,116 @@
++import json
++from pathlib import Path
++
++from minilucene.errors import (
++    IndexAlreadyExistsError,
++    IndexNotFoundError,
++    SchemaMismatchError,
++)
++from minilucene.schema import Schema
++from minilucene.storage.filesystem import FileSystemOps
++from minilucene.storage.manifest import Manifest, ManifestStore
++
++_SCHEMA_FORMAT_VERSION = 1
++
++
++class Index:
++    def __init__(self, path: Path, schema: Schema) -> None:
++        self.path = Path(path)
++        self.schema = schema
++        self._manifest_store = ManifestStore(self.path)
++
++    @classmethod
++    def create(cls, path: Path, schema: Schema) -> "Index":
++        path = Path(path)
++        if path.exists() and any(path.iterdir()):
++            raise IndexAlreadyExistsError(
++                f"index path is not empty: {path}"
++            )
++        fs = FileSystemOps()
++        fs.mkdir(path, parents=True, exist_ok=True)
++        cls._write_schema(path, schema, fs)
++        ManifestStore(path, fs=fs).create(
++            schema_fingerprint=schema.fingerprint
++        )
++        return cls(path, schema)
++
++    @classmethod
++    def open(
++        cls, path: Path, schema: Schema | None = None
++    ) -> "Index":
++        path = Path(path)
++        if not (path / "manifest.json").exists():
++            raise IndexNotFoundError(f"index manifest not found: {path}")
++        persisted_schema = cls._read_schema(path)
++        manifest = ManifestStore(path).read()
++        if manifest.schema_fingerprint != persisted_schema.fingerprint:
++            raise SchemaMismatchError(
++                "manifest and persisted schema fingerprints differ"
++            )
++        if (
++            schema is not None
++            and schema.fingerprint != persisted_schema.fingerprint
++        ):
++            raise SchemaMismatchError(
++                "supplied schema fingerprint does not match index"
++            )
++        return cls(path, persisted_schema)
++
++    @staticmethod
++    def _write_schema(
++        path: Path, schema: Schema, fs: FileSystemOps
++    ) -> None:
++        payload = {
++            "format_version": _SCHEMA_FORMAT_VERSION,
++            "fields": schema.to_dict(),
++            "fingerprint": schema.fingerprint,
++        }
++        temporary = path / "schema.tmp"
++        destination = path / "schema.json"
++        fs.write_bytes(
++            temporary,
++            json.dumps(
++                payload,
++                sort_keys=True,
++                separators=(",", ":"),
++            ).encode("utf-8"),
++        )
++        fs.fsync_file(temporary)
++        fs.replace(temporary, destination)
++        fs.fsync_directory(path)
++
++    @staticmethod
++    def _read_schema(path: Path) -> Schema:
++        try:
++            payload = json.loads(
++                (path / "schema.json")
++                .read_text(encoding="utf-8", errors="strict")
++            )
++        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
++            raise SchemaMismatchError(
++                f"cannot read persisted schema: {error}"
++            ) from error
++        if not isinstance(payload, dict):
++            raise SchemaMismatchError("persisted schema must be an object")
++        if payload.get("format_version") != _SCHEMA_FORMAT_VERSION:
++            raise SchemaMismatchError("unknown schema format version")
++        fields = payload.get("fields")
++        if not isinstance(fields, dict):
++            raise SchemaMismatchError("persisted schema fields are invalid")
++        try:
++            schema = Schema.from_dict(fields)
++        except ValueError as error:
++            raise SchemaMismatchError(str(error)) from error
++        if payload.get("fingerprint") != schema.fingerprint:
++            raise SchemaMismatchError(
++                "persisted schema fingerprint does not match fields"
++            )
++        return schema
++
++    def manifest(self) -> Manifest:
++        return self._manifest_store.read()
++
++    def writer(self):
++        from minilucene.writer import IndexWriter
++
++        return IndexWriter(self)
+diff --git a/src/minilucene/schema.py b/src/minilucene/schema.py
+index 4f581131c5c8993b99296fd1f3c1b52950572aa6..573f2eb0af73add0b015ba025212f97ea1e5d938 100644
+--- a/src/minilucene/schema.py
++++ b/src/minilucene/schema.py
+@@ -90,3 +90,22 @@ class Schema(Mapping[str, FieldType]):
+ 
+     def __len__(self) -> int:
+         return len(self._fields)
++
++    def to_dict(self) -> dict[str, dict[str, object]]:
++        return {
++            name: asdict(field) for name, field in self._fields.items()
++        }
++
++    @classmethod
++    def from_dict(
++        cls, fields: Mapping[str, Mapping[str, object]]
++    ) -> Schema:
++        try:
++            return cls(
++                **{
++                    name: FieldType(**dict(properties))
++                    for name, properties in fields.items()
++                }
++            )
++        except (TypeError, ValueError) as error:
++            raise SchemaError(f"invalid persisted schema: {error}") from error
+diff --git a/src/minilucene/writer.py b/src/minilucene/writer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ada571086a637da1fc5fcfd348c63a70259a5f27
+--- /dev/null
++++ b/src/minilucene/writer.py
+@@ -0,0 +1,49 @@
++import json
++import os
++from pathlib import Path
++from typing import TYPE_CHECKING, Self
++
++from minilucene.errors import WriterAlreadyOpenError
++
++if TYPE_CHECKING:
++    from minilucene.index.directory import Index
++
++
++class IndexWriter:
++    def __init__(self, index: "Index") -> None:
++        self.index = index
++        self._lock_path = Path(index.path) / ".writer.lock"
++        self._closed = False
++        try:
++            descriptor = os.open(
++                self._lock_path,
++                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
++                0o600,
++            )
++        except FileExistsError as error:
++            raise WriterAlreadyOpenError(
++                f"writer already open for index: {index.path}"
++            ) from error
++        try:
++            payload = json.dumps(
++                {"pid": os.getpid()}, separators=(",", ":")
++            ).encode("utf-8")
++            os.write(descriptor, payload)
++            os.fsync(descriptor)
++        finally:
++            os.close(descriptor)
++
++    def close(self) -> None:
++        if self._closed:
++            return
++        self._closed = True
++        try:
++            self._lock_path.unlink()
++        except FileNotFoundError:
++            pass
++
++    def __enter__(self) -> Self:
++        return self
++
++    def __exit__(self, exc_type, exc_value, traceback) -> None:
++        self.close()
+diff --git a/tests/contract/test_index_lifecycle.py b/tests/contract/test_index_lifecycle.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd2871b61b27c0fd9ecd56a60427ec4a31478ab4
+--- /dev/null
++++ b/tests/contract/test_index_lifecycle.py
+@@ -0,0 +1,68 @@
++import json
++
++import pytest
++
++from minilucene import Index, KeywordField, Schema, TextField
++from minilucene.errors import (
++    IndexAlreadyExistsError,
++    SchemaMismatchError,
++    WriterAlreadyOpenError,
++)
++
++
++def build_schema():
++    return Schema(
++        id=KeywordField(stored=True),
++        body=TextField(stored=True),
++    )
++
++
++def test_create_open_and_schema_fingerprint(tmp_path):
++    schema = build_schema()
++    Index.create(tmp_path, schema)
++    reopened = Index.open(tmp_path)
++    assert reopened.schema == schema
++    assert reopened.schema.fingerprint == schema.fingerprint
++    assert reopened.manifest().schema_fingerprint == schema.fingerprint
++
++
++def test_create_rejects_nonempty_path(tmp_path):
++    (tmp_path / "foreign.txt").write_text("foreign", encoding="utf-8")
++    with pytest.raises(IndexAlreadyExistsError):
++        Index.create(tmp_path, build_schema())
++
++
++def test_open_rejects_supplied_different_schema(tmp_path):
++    Index.create(tmp_path, build_schema())
++    with pytest.raises(SchemaMismatchError):
++        Index.open(tmp_path, Schema(body=TextField(stored=True)))
++
++
++def test_open_rejects_tampered_persisted_schema(tmp_path):
++    Index.create(tmp_path, build_schema())
++    schema_path = tmp_path / "schema.json"
++    payload = json.loads(schema_path.read_text(encoding="utf-8"))
++    payload["fingerprint"] = "tampered"
++    schema_path.write_text(json.dumps(payload), encoding="utf-8")
++    with pytest.raises(SchemaMismatchError):
++        Index.open(tmp_path)
++
++
++def test_only_one_writer_can_be_open(tmp_path):
++    index = Index.create(tmp_path, build_schema())
++    first = index.writer()
++    with pytest.raises(WriterAlreadyOpenError):
++        index.writer()
++    first.close()
++    first.close()
++    second = index.writer()
++    second.close()
++    assert not (tmp_path / ".writer.lock").exists()
++
++
++def test_writer_context_releases_lock(tmp_path):
++    index = Index.create(tmp_path, build_schema())
++    with index.writer() as writer:
++        assert writer.index is index
++        assert (tmp_path / ".writer.lock").exists()
++    assert not (tmp_path / ".writer.lock").exists()

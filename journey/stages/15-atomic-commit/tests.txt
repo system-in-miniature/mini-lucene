@@ -1,0 +1,3 @@
+tests/acceptance/test_phase2_storage_commit.py
+tests/contract/test_disk_search.py
+tests/storage/test_commit_recovery.py

@@ -1,0 +1,126 @@
+diff --git a/src/minilucene/storage/segment_store.py b/src/minilucene/storage/segment_store.py
+index b809a9b48390f86ebe211aa9ffa5d0937b52b28b..294c01091a2753a3deff73cd1da54b76faa7e6a4 100644
+--- a/src/minilucene/storage/segment_store.py
++++ b/src/minilucene/storage/segment_store.py
+@@ -44,6 +44,11 @@ class SegmentStore:
+     def _directory_name(generation: int) -> str:
+         return f"seg_{generation:06d}"
+ 
++    def generation_exists(self, generation: int) -> bool:
++        return self.fs.exists(
++            self.segments_path / self._directory_name(generation)
++        )
++
+     def publish(self, image: SegmentImage) -> SegmentDescriptor:
+         relative_path = Path("segments") / self._directory_name(
+             image.generation
+diff --git a/src/minilucene/writer.py b/src/minilucene/writer.py
+index 5746535d16c379f6a64cf1b29a0a9cc674879048..baae188c44b902865368f15986cb4f69e6973aa0 100644
+--- a/src/minilucene/writer.py
++++ b/src/minilucene/writer.py
+@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
+ 
+ from minilucene.errors import WriterAlreadyOpenError
+ from minilucene.index.memory import RamIndexBuilder
++from minilucene.reader import IndexReader
+ from minilucene.storage.image import SegmentImage
+ from minilucene.storage.manifest import (
+     Manifest,
+@@ -102,6 +103,8 @@ class IndexWriter:
+         if self.buffered_document_count == 0:
+             return None
+         generation = self._next_segment_generation
++        while self._segment_store.generation_exists(generation):
++            generation += 1
+         image = SegmentImage.from_memory_segment(
+             generation=generation,
+             schema_fingerprint=self.index.schema.fingerprint,
+@@ -109,10 +112,25 @@ class IndexWriter:
+         )
+         descriptor = self._segment_store.publish(image)
+         self._segment_generations.append(generation)
+-        self._next_segment_generation += 1
++        self._next_segment_generation = generation + 1
+         self._buffer = RamIndexBuilder(self.index.schema)
+         return descriptor
+ 
++    def refresh(self) -> IndexReader:
++        self._ensure_open()
++        self.flush()
++        segments = tuple(
++            self._segment_store.open(
++                generation, self.index.schema.fingerprint
++            )
++            for generation in self._segment_generations
++        )
++        return IndexReader(
++            self.index.schema,
++            segments,
++            commit_generation=None,
++        )
++
+     def commit(self) -> Manifest:
+         self._ensure_open()
+         self.flush()
+diff --git a/tests/nrt/test_refresh_visibility.py b/tests/nrt/test_refresh_visibility.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ba0cbc9c0dd12797a36e3183d5f4476c946ce4d
+--- /dev/null
++++ b/tests/nrt/test_refresh_visibility.py
+@@ -0,0 +1,56 @@
++from minilucene import Index, KeywordField, Schema, TextField
++from minilucene.query import TermQuery
++
++
++def build_index(tmp_path):
++    return Index.create(
++        tmp_path,
++        Schema(
++            id=KeywordField(stored=True),
++            body=TextField(stored=True),
++        ),
++    )
++
++
++def test_refresh_sees_flushed_uncommitted_documents(tmp_path):
++    index = build_index(tmp_path)
++    committed = index.open_reader()
++    with index.writer() as writer:
++        writer.add_document(id="1", body="visible")
++        nrt = writer.refresh()
++        assert nrt.search(TermQuery("body", "visible"), top_k=10).total_hits == 1
++        assert nrt.snapshot.commit_generation is None
++        assert committed.max_doc == 0
++        assert index.open_reader().max_doc == 0
++
++
++def test_uncommitted_refresh_state_disappears_after_process_reopen(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="ephemeral")
++        assert writer.refresh().max_doc == 1
++    reopened = Index.open(tmp_path)
++    assert reopened.open_reader().max_doc == 0
++
++
++def test_old_nrt_reader_stays_unchanged_after_later_refresh(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="first")
++        first = writer.refresh()
++        writer.add_document(id="2", body="second")
++        second = writer.refresh()
++        assert first.max_doc == 1
++        assert second.max_doc == 2
++        assert first.search(TermQuery("body", "second"), top_k=10).total_hits == 0
++
++
++def test_new_writer_skips_generation_of_prior_orphan(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="orphan")
++        assert writer.refresh().snapshot.segments[0].generation == 1
++    with index.writer() as writer:
++        writer.add_document(id="2", body="next")
++        reader = writer.refresh()
++        assert reader.snapshot.segments[0].generation == 2

@@ -1,0 +1,188 @@
+[project]
+name = "MiniLucene"
+package = "minilucene"
+repository_url = "https://github.com/system-in-miniature/mini-lucene"
+base = "3751ebd^"
+owned_roots = ["src/minilucene", "tests/acceptance", "tests/contract", "tests/evaluation", "tests/fixtures", "tests/helpers", "tests/nrt", "tests/storage", "tests/support", "tests/unit"]
+owned_files = ["pyproject.toml", "uv.lock", "tests/test_public_surface.py"]
+excluded_files = ["tests/contract/test_behavior_matrix.py"]
+
+[[stages]]
+number = 1
+slug = "schema-contract"
+chapter = 1
+source = "7db4ce2"
+
+[[stages]]
+number = 2
+slug = "positional-analysis"
+chapter = 2
+source = "a469ab5"
+
+[[stages]]
+number = 3
+slug = "ram-inverted-index"
+chapter = 3
+source = "6d97fff"
+
+[[stages]]
+number = 4
+slug = "query-matching"
+chapter = 3
+source = "e88e295"
+
+[[stages]]
+number = 5
+slug = "corpus-statistics"
+chapter = 8
+source = "02391db"
+
+[[stages]]
+number = 6
+slug = "bm25-ranking"
+chapter = 8
+source = "33df4a2"
+
+[[stages]]
+number = 7
+slug = "topk-retrieval"
+chapter = 8
+source = "50be416"
+
+[[stages]]
+number = 8
+slug = "segment-images"
+chapter = 4
+source = "57d4e7b"
+
+[[stages]]
+number = 9
+slug = "bounded-varints"
+chapter = 4
+source = "666557d"
+
+[[stages]]
+number = 10
+slug = "segment-codec"
+chapter = 4
+source = "1d97dd2"
+
+[[stages]]
+number = 11
+slug = "segment-publication"
+chapter = 4
+source = "631d9d7"
+
+[[stages]]
+number = 12
+slug = "manifest-root"
+chapter = 7
+source = "c3ace7d"
+
+[[stages]]
+number = 13
+slug = "index-lifecycle"
+chapter = 5
+source = "d653459"
+
+[[stages]]
+number = 14
+slug = "writer-flush"
+chapter = 5
+source = "5ebaa42"
+
+[[stages]]
+number = 15
+slug = "atomic-commit"
+chapter = 7
+source = "e277c21"
+
+[[stages]]
+number = 16
+slug = "reader-snapshots"
+chapter = 5
+source = "851fb55"
+
+[[stages]]
+number = 17
+slug = "nrt-refresh"
+chapter = 5
+source = "839c3f9"
+
+[[stages]]
+number = 18
+slug = "live-doc-masks"
+chapter = 6
+source = "fae32a8"
+
+[[stages]]
+number = 19
+slug = "delete-by-term"
+chapter = 6
+source = "0d98f3f"
+
+[[stages]]
+number = 20
+slug = "update-live-stats"
+chapter = 6
+source = "7b08e8e"
+
+[[stages]]
+number = 21
+slug = "segment-merge"
+chapter = 10
+source = "fe3ccc0"
+
+[[stages]]
+number = 22
+slug = "ownership-close"
+chapter = 10
+source = "2a0c23d"
+
+[[stages]]
+number = 23
+slug = "query-lexer"
+chapter = 9
+source = "8a13da1"
+
+[[stages]]
+number = 24
+slug = "query-parser"
+chapter = 9
+source = "aa91e92"
+
+[[stages]]
+number = 25
+slug = "prefix-rewrite"
+chapter = 9
+source = "7fc8145"
+
+[[stages]]
+number = 26
+slug = "highlighting"
+chapter = 9
+source = "30a839a"
+
+[[stages]]
+number = 27
+slug = "relevance-evaluation"
+chapter = 8
+source = "588b645"
+
+[[stages]]
+number = 28
+slug = "cli-domain-closure"
+chapter = 1
+source = "530f74b"
+
+[[stages]]
+number = 29
+slug = "query-regressions"
+chapter = 9
+source = "dd4b50c"
+
+[[stages]]
+number = 30
+slug = "daat-execution"
+chapter = 11
+source = "88296f0"

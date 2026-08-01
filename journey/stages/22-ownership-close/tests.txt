@@ -1,0 +1,3 @@
+tests/acceptance/test_phase3_nrt_mutation.py
+tests/nrt/test_close_lifecycle.py
+tests/nrt/test_segment_ownership.py

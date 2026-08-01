@@ -1,0 +1,1 @@
+tests/contract/test_index_lifecycle.py

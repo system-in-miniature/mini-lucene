@@ -1,0 +1,4 @@
+tests/evaluation/test_metrics.py
+tests/evaluation/test_reference_corpus.py
+tests/support/__init__.py
+tests/support/reference_corpus.py

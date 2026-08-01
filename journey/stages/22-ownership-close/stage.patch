@@ -1,0 +1,658 @@
+diff --git a/src/minilucene/errors.py b/src/minilucene/errors.py
+index 48d73a44f0de44e4edf84850bbe9fa6ae03edd3e..64409edb4e9eb9257b7b4f668dca14462b40e803 100644
+--- a/src/minilucene/errors.py
++++ b/src/minilucene/errors.py
+@@ -20,3 +20,11 @@ class WriterAlreadyOpenError(MiniLuceneError):
+ 
+ class AlreadyClosedError(MiniLuceneError):
+     pass
++
++
++class CloseError(MiniLuceneError):
++    def __init__(self, errors: tuple[BaseException, ...]) -> None:
++        self.errors = errors
++        super().__init__(
++            f"close encountered {len(errors)} cleanup error(s)"
++        )
+diff --git a/src/minilucene/index/directory.py b/src/minilucene/index/directory.py
+index 58b7896fd4b30befa163456645075090df8c633d..a68d8d252e5047b22e1f156f988e6b239acd8ca8 100644
+--- a/src/minilucene/index/directory.py
++++ b/src/minilucene/index/directory.py
+@@ -1,7 +1,9 @@
+ import json
+ from pathlib import Path
++from typing import Self
+ 
+ from minilucene.errors import (
++    AlreadyClosedError,
+     IndexAlreadyExistsError,
+     IndexNotFoundError,
+     SchemaMismatchError,
+@@ -11,6 +13,10 @@ from minilucene.schema import Schema
+ from minilucene.storage.filesystem import FileSystemOps
+ from minilucene.storage.live_docs import LiveDocsStore
+ from minilucene.storage.manifest import Manifest, ManifestStore
++from minilucene.storage.registry import (
++    LifecycleDiagnostics,
++    registry_for,
++)
+ from minilucene.storage.segment_store import SegmentStore
+ 
+ _SCHEMA_FORMAT_VERSION = 1
+@@ -21,6 +27,12 @@ class Index:
+         self.path = Path(path)
+         self.schema = schema
+         self._manifest_store = ManifestStore(self.path)
++        self._registry = registry_for(self.path)
++        self._closed = False
++
++    def _ensure_open(self) -> None:
++        if self._closed:
++            raise AlreadyClosedError("index is closed")
+ 
+     @classmethod
+     def create(cls, path: Path, schema: Schema) -> "Index":
+@@ -111,14 +123,17 @@ class Index:
+         return schema
+ 
+     def manifest(self) -> Manifest:
++        self._ensure_open()
+         return self._manifest_store.read()
+ 
+     def writer(self, **options):
++        self._ensure_open()
+         from minilucene.writer import IndexWriter
+ 
+         return IndexWriter(self, **options)
+ 
+     def open_reader(self) -> IndexReader:
++        self._ensure_open()
+         manifest = self.manifest()
+         segment_store = SegmentStore(self.path)
+         segments = tuple(
+@@ -147,4 +162,25 @@ class Index:
+             segments,
+             live_docs,
+             commit_generation=manifest.commit_generation,
++            registry=self._registry,
++        )
++
++    def collect_garbage(self) -> tuple[Path, ...]:
++        self._ensure_open()
++        return self._registry.collect_garbage(
++            manifest_generations=self.manifest().segment_generations
+         )
++
++    def lifecycle_diagnostics(self) -> LifecycleDiagnostics:
++        return self._registry.diagnostics()
++
++    def close(self) -> LifecycleDiagnostics:
++        self._closed = True
++        return self.lifecycle_diagnostics()
++
++    def __enter__(self) -> Self:
++        self._ensure_open()
++        return self
++
++    def __exit__(self, exc_type, exc_value, traceback) -> None:
++        self.close()
+diff --git a/src/minilucene/reader.py b/src/minilucene/reader.py
+index a5459634cb62886f937d87b73e1f76c802a5bb5e..2323983cba3f2fe8940f73ac584e219f286da568 100644
+--- a/src/minilucene/reader.py
++++ b/src/minilucene/reader.py
+@@ -10,6 +10,7 @@ from minilucene.search.reader import ReaderView
+ from minilucene.search.searcher import IndexSearcher
+ from minilucene.snapshot import ReaderSnapshot, SegmentSnapshot
+ from minilucene.storage.image import SegmentImage
++from minilucene.storage.registry import SegmentRegistry
+ 
+ 
+ class IndexReader(ReaderView):
+@@ -20,6 +21,7 @@ class IndexReader(ReaderView):
+         live_docs: tuple[frozenset[int], ...] | None = None,
+         *,
+         commit_generation: int | None = None,
++        registry: SegmentRegistry | None = None,
+     ) -> None:
+         super().__init__(  # type: ignore[arg-type]
+             schema,
+@@ -50,6 +52,15 @@ class IndexReader(ReaderView):
+             commit_generation=commit_generation,
+         )
+         self._closed = False
++        self._registry = registry
++        self._owner_id = (
++            registry.acquire(
++                "reader",
++                tuple(segment.generation for segment in segments),
++            )
++            if registry is not None
++            else None
++        )
+ 
+     def _ensure_open(self) -> None:
+         if self._closed:
+@@ -76,7 +87,12 @@ class IndexReader(ReaderView):
+         return super().field_length(field, doc_id)
+ 
+     def close(self) -> None:
++        if self._closed:
++            return
+         self._closed = True
++        if self._registry is not None and self._owner_id is not None:
++            self._registry.release(self._owner_id)
++            self._owner_id = None
+ 
+     def __enter__(self) -> Self:
+         self._ensure_open()
+diff --git a/src/minilucene/storage/registry.py b/src/minilucene/storage/registry.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f7dc846434bea3cf191c0bed9957b031c7f9c3d3
+--- /dev/null
++++ b/src/minilucene/storage/registry.py
+@@ -0,0 +1,130 @@
++import re
++import threading
++import uuid
++from dataclasses import dataclass
++from pathlib import Path
++
++from minilucene.storage.filesystem import FileSystemOps
++
++_SEGMENT_DIRECTORY = re.compile(r"seg_(\d+)")
++
++
++@dataclass(frozen=True, slots=True)
++class LifecycleDiagnostics:
++    reader_owners: tuple[str, ...]
++    writer_owner: str | None
++    segment_owners: dict[int, tuple[str, ...]]
++    temporary_jobs: tuple[str, ...] = ()
++
++
++@dataclass(frozen=True, slots=True)
++class _Owner:
++    kind: str
++    generations: frozenset[int]
++
++
++class SegmentRegistry:
++    def __init__(self, root: Path) -> None:
++        self.root = Path(root)
++        self._owners: dict[str, _Owner] = {}
++        self._lock = threading.RLock()
++
++    def acquire(self, kind: str, generations: tuple[int, ...]) -> str:
++        if kind not in {"reader", "writer"}:
++            raise ValueError(f"unknown segment owner kind: {kind}")
++        owner_id = f"{kind}-{uuid.uuid4().hex}"
++        with self._lock:
++            self._owners[owner_id] = _Owner(
++                kind=kind,
++                generations=frozenset(generations),
++            )
++        return owner_id
++
++    def replace(
++        self, owner_id: str, generations: tuple[int, ...]
++    ) -> None:
++        with self._lock:
++            owner = self._owners.get(owner_id)
++            if owner is None:
++                raise KeyError(f"unknown segment owner: {owner_id}")
++            self._owners[owner_id] = _Owner(
++                kind=owner.kind,
++                generations=frozenset(generations),
++            )
++
++    def release(self, owner_id: str) -> None:
++        with self._lock:
++            self._owners.pop(owner_id, None)
++
++    def diagnostics(self) -> LifecycleDiagnostics:
++        with self._lock:
++            readers = tuple(
++                sorted(
++                    owner_id
++                    for owner_id, owner in self._owners.items()
++                    if owner.kind == "reader"
++                )
++            )
++            writers = tuple(
++                owner_id
++                for owner_id, owner in self._owners.items()
++                if owner.kind == "writer"
++            )
++            segment_owners: dict[int, list[str]] = {}
++            for owner_id, owner in self._owners.items():
++                for generation in owner.generations:
++                    segment_owners.setdefault(generation, []).append(owner_id)
++            return LifecycleDiagnostics(
++                reader_owners=readers,
++                writer_owner=writers[0] if writers else None,
++                segment_owners={
++                    generation: tuple(sorted(owners))
++                    for generation, owners in segment_owners.items()
++                },
++            )
++
++    def collect_garbage(
++        self,
++        *,
++        manifest_generations: tuple[int, ...],
++        fs: FileSystemOps | None = None,
++    ) -> tuple[Path, ...]:
++        fs = fs or FileSystemOps()
++        segments_path = self.root / "segments"
++        if not fs.exists(segments_path):
++            return ()
++        with self._lock:
++            retained = set(manifest_generations)
++            for owner in self._owners.values():
++                retained.update(owner.generations)
++            removable: list[Path] = []
++            for path in fs.list_directory(segments_path):
++                match = _SEGMENT_DIRECTORY.fullmatch(path.name)
++                if (
++                    match is None
++                    or not path.is_dir()
++                    or not (path / "segment.json").is_file()
++                ):
++                    continue
++                generation = int(match.group(1))
++                if generation not in retained:
++                    removable.append(path)
++            for path in removable:
++                fs.remove_tree(path)
++            if removable:
++                fs.fsync_directory(segments_path)
++            return tuple(removable)
++
++
++_REGISTRIES: dict[Path, SegmentRegistry] = {}
++_REGISTRIES_LOCK = threading.Lock()
++
++
++def registry_for(root: Path) -> SegmentRegistry:
++    canonical = Path(root).resolve()
++    with _REGISTRIES_LOCK:
++        registry = _REGISTRIES.get(canonical)
++        if registry is None:
++            registry = SegmentRegistry(canonical)
++            _REGISTRIES[canonical] = registry
++        return registry
+diff --git a/src/minilucene/writer.py b/src/minilucene/writer.py
+index be777588c096c928c16450fb2e285d8d2e6b623b..4b71f3c23361a7c17530c3ca8f114ee3ed0e1423 100644
+--- a/src/minilucene/writer.py
++++ b/src/minilucene/writer.py
+@@ -1,10 +1,15 @@
+ import json
+ import os
+ from dataclasses import dataclass
++from enum import StrEnum
+ from pathlib import Path
+ from typing import TYPE_CHECKING, Self
+ 
+-from minilucene.errors import WriterAlreadyOpenError
++from minilucene.errors import (
++    AlreadyClosedError,
++    CloseError,
++    WriterAlreadyOpenError,
++)
+ from minilucene.index.memory import RamIndexBuilder
+ from minilucene.merge import merge_segment_images
+ from minilucene.reader import IndexReader
+@@ -34,6 +39,12 @@ class FlushPolicy:
+             raise ValueError("flush thresholds must be positive")
+ 
+ 
++class WriterState(StrEnum):
++    OPEN = "OPEN"
++    CLOSING = "CLOSING"
++    CLOSED = "CLOSED"
++
++
+ class IndexWriter:
+     def __init__(
+         self,
+@@ -44,7 +55,7 @@ class IndexWriter:
+         self.index = index
+         self.flush_policy = flush_policy or FlushPolicy()
+         self._lock_path = Path(index.path) / ".writer.lock"
+-        self._closed = False
++        self._state = WriterState.OPEN
+         try:
+             descriptor = os.open(
+                 self._lock_path,
+@@ -105,6 +116,10 @@ class IndexWriter:
+                 segment_commit.segment_generation
+             ] = metadata
+         self._dirty_live_docs: set[int] = set()
++        self._registry = index._registry
++        self._owner_id = self._registry.acquire(
++            "writer", tuple(self._segment_generations)
++        )
+ 
+     @property
+     def segment_generations(self) -> tuple[int, ...]:
+@@ -119,8 +134,8 @@ class IndexWriter:
+         return self._buffer.posting_count
+ 
+     def _ensure_open(self) -> None:
+-        if self._closed:
+-            raise RuntimeError("writer is closed")
++        if self._state is not WriterState.OPEN:
++            raise AlreadyClosedError("writer is closed")
+ 
+     def add_document(self, **values: object) -> int:
+         self._ensure_open()
+@@ -162,6 +177,9 @@ class IndexWriter:
+         self._next_segment_generation = generation + 1
+         self._buffer = RamIndexBuilder(self.index.schema)
+         self._buffer_live_docs = set()
++        self._registry.replace(
++            self._owner_id, tuple(self._segment_generations)
++        )
+         return descriptor
+ 
+     def refresh(self) -> IndexReader:
+@@ -182,6 +200,7 @@ class IndexWriter:
+             segments,
+             live_docs,
+             commit_generation=None,
++            registry=self._registry,
+         )
+ 
+     def _derive_delete(
+@@ -334,6 +353,9 @@ class IndexWriter:
+         self._live_docs_metadata = next_metadata
+         self._dirty_live_docs.difference_update(selected_set)
+         self._next_segment_generation = generation + 1
++        self._registry.replace(
++            self._owner_id, tuple(self._segment_generations)
++        )
+         return descriptor
+ 
+     def commit(self) -> Manifest:
+@@ -399,13 +421,25 @@ class IndexWriter:
+         return manifest
+ 
+     def close(self) -> None:
+-        if self._closed:
++        if self._state is WriterState.CLOSED:
+             return
+-        self._closed = True
++        if self._state is WriterState.CLOSING:
++            return
++        self._state = WriterState.CLOSING
++        errors: list[BaseException] = []
++        try:
++            self._registry.release(self._owner_id)
++        except (KeyError, OSError, RuntimeError) as error:
++            errors.append(error)
+         try:
+             self._lock_path.unlink()
+         except FileNotFoundError:
+             pass
++        except (OSError, RuntimeError) as error:
++            errors.append(error)
++        self._state = WriterState.CLOSED
++        if errors:
++            raise CloseError(tuple(errors))
+ 
+     def __enter__(self) -> Self:
+         return self
+diff --git a/tests/acceptance/test_phase3_nrt_mutation.py b/tests/acceptance/test_phase3_nrt_mutation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..11a0f9226d57b98118bd94892cb4fb7b25f21e33
+--- /dev/null
++++ b/tests/acceptance/test_phase3_nrt_mutation.py
+@@ -0,0 +1,80 @@
++from minilucene import Index, KeywordField, Schema, TextField
++from minilucene.query import TermQuery
++
++
++def ids(reader, term):
++    return tuple(
++        hit.stored_fields["id"]
++        for hit in reader.search(
++            TermQuery("body", term),
++            top_k=10,
++        ).hits
++    )
++
++
++def test_nrt_mutation_merge_recovery_and_owner_zero(tmp_path):
++    schema = Schema(
++        id=KeywordField(stored=True),
++        body=TextField(stored=True),
++    )
++    index = Index.create(tmp_path, schema)
++    with index.writer() as writer:
++        writer.add_document(id="1", body="alpha old")
++        writer.flush()
++        writer.add_document(id="2", body="beta old")
++        writer.commit()
++
++    old_reader = index.open_reader()
++    writer = index.writer()
++    writer.add_document(id="3", body="gamma nrt")
++    first_nrt = writer.refresh()
++    assert ids(old_reader, "gamma") == ()
++    assert ids(first_nrt, "gamma") == ("3",)
++    writer.delete_by_term("id", "1")
++    writer.update_document(
++        field="id",
++        term="2",
++        id="2",
++        body="beta replacement",
++    )
++    second_nrt = writer.refresh()
++    assert ids(second_nrt, "alpha") == ()
++    assert ids(second_nrt, "replacement") == ("2",)
++    writer.close()
++
++    crashed = Index.open(tmp_path)
++    crash_reader = crashed.open_reader()
++    assert ids(crash_reader, "alpha") == ("1",)
++    assert ids(crash_reader, "old") == ("1", "2")
++    assert ids(crash_reader, "gamma") == ()
++    crash_reader.close()
++
++    with crashed.writer() as writer:
++        writer.delete_by_term("id", "1")
++        writer.update_document(
++            field="id",
++            term="2",
++            id="2",
++            body="beta replacement",
++        )
++        writer.add_document(id="3", body="gamma committed")
++        writer.flush()
++        writer.merge(writer.segment_generations)
++        writer.commit()
++
++    committed = Index.open(tmp_path)
++    final_reader = committed.open_reader()
++    assert ids(final_reader, "alpha") == ()
++    assert ids(final_reader, "replacement") == ("2",)
++    assert ids(final_reader, "gamma") == ("3",)
++    assert ids(old_reader, "old") == ("1", "2")
++
++    old_reader.close()
++    first_nrt.close()
++    second_nrt.close()
++    final_reader.close()
++    committed.collect_garbage()
++    diagnostics = committed.lifecycle_diagnostics()
++    assert diagnostics.reader_owners == ()
++    assert diagnostics.writer_owner is None
++    assert diagnostics.segment_owners == {}
+diff --git a/tests/nrt/test_close_lifecycle.py b/tests/nrt/test_close_lifecycle.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..beae2b8d5574d3ce22a8cb8cd3f1a3f14f9f61a0
+--- /dev/null
++++ b/tests/nrt/test_close_lifecycle.py
+@@ -0,0 +1,66 @@
++import pytest
++
++from minilucene import Index, Schema, TextField
++from minilucene.errors import AlreadyClosedError
++from minilucene.query import TermQuery
++
++
++def build_index(tmp_path):
++    return Index.create(
++        tmp_path,
++        Schema(body=TextField(stored=True)),
++    )
++
++
++def test_writer_close_stops_admission_and_releases_owner_and_lock(tmp_path):
++    index = build_index(tmp_path)
++    writer = index.writer()
++    writer.add_document(body="unpublished")
++    writer.flush()
++    writer.close()
++    writer.close()
++
++    assert not (tmp_path / ".writer.lock").exists()
++    assert index.lifecycle_diagnostics().writer_owner is None
++    with pytest.raises(AlreadyClosedError):
++        writer.add_document(body="late")
++    with pytest.raises(AlreadyClosedError):
++        writer.refresh()
++    with pytest.raises(AlreadyClosedError):
++        writer.commit()
++
++
++def test_index_close_reports_external_reader_without_invalidating_it(tmp_path):
++    index = build_index(tmp_path)
++    with index.writer() as writer:
++        writer.add_document(body="still readable")
++        writer.commit()
++    reader = index.open_reader()
++    diagnostics = index.close()
++    assert len(diagnostics.reader_owners) == 1
++    assert (
++        reader.search(
++            TermQuery("body", "readable"),
++            top_k=10,
++        ).total_hits
++        == 1
++    )
++    reader.close()
++    assert index.lifecycle_diagnostics().reader_owners == ()
++
++
++def test_closed_index_rejects_new_writer_and_reader(tmp_path):
++    index = build_index(tmp_path)
++    index.close()
++    index.close()
++    with pytest.raises(AlreadyClosedError):
++        index.writer()
++    with pytest.raises(AlreadyClosedError):
++        index.open_reader()
++
++
++def test_index_context_closes_only_index_admission(tmp_path):
++    with build_index(tmp_path) as index:
++        reader = index.open_reader()
++    assert reader.search(TermQuery("body", "none"), top_k=10).total_hits == 0
++    reader.close()
+diff --git a/tests/nrt/test_segment_ownership.py b/tests/nrt/test_segment_ownership.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae2282d44ab064a6b829f89e37761674a42d95f3
+--- /dev/null
++++ b/tests/nrt/test_segment_ownership.py
+@@ -0,0 +1,90 @@
++from minilucene import Index, KeywordField, Schema, TextField
++
++
++def build_two_segment_index(tmp_path):
++    index = Index.create(
++        tmp_path,
++        Schema(
++            id=KeywordField(stored=True),
++            body=TextField(stored=True),
++        ),
++    )
++    with index.writer() as writer:
++        writer.add_document(id="1", body="first")
++        writer.flush()
++        writer.add_document(id="2", body="second")
++        writer.commit()
++    return index
++
++
++def test_obsolete_segments_wait_for_old_reader_close(tmp_path):
++    index = build_two_segment_index(tmp_path)
++    old = index.open_reader()
++    old_paths = tuple(
++        tmp_path / "segments" / f"seg_{generation:06d}"
++        for generation in (1, 2)
++    )
++
++    with index.writer() as writer:
++        writer.merge(writer.segment_generations)
++        writer.commit()
++
++    index.collect_garbage()
++    assert all(path.exists() for path in old_paths)
++    old.close()
++    index.collect_garbage()
++    assert all(not path.exists() for path in old_paths)
++    assert (tmp_path / "segments" / "seg_000003").exists()
++
++
++def test_two_readers_retain_independently(tmp_path):
++    index = build_two_segment_index(tmp_path)
++    first = index.open_reader()
++    second = index.open_reader()
++    with index.writer() as writer:
++        writer.merge(writer.segment_generations)
++        writer.commit()
++    first.close()
++    index.collect_garbage()
++    assert (tmp_path / "segments" / "seg_000001").exists()
++    second.close()
++    index.collect_garbage()
++    assert not (tmp_path / "segments" / "seg_000001").exists()
++
++
++def test_writer_retains_uncommitted_segment_until_close(tmp_path):
++    index = Index.create(
++        tmp_path,
++        Schema(body=TextField(stored=True)),
++    )
++    writer = index.writer()
++    writer.add_document(body="orphan")
++    descriptor = writer.flush()
++    path = tmp_path / descriptor.path
++    index.collect_garbage()
++    assert path.exists()
++    writer.close()
++    index.collect_garbage()
++    assert not path.exists()
++
++
++def test_garbage_collection_retains_malformed_directory(tmp_path):
++    index = build_two_segment_index(tmp_path)
++    malformed = tmp_path / "segments" / "seg_unknown"
++    malformed.mkdir()
++    index.collect_garbage()
++    assert malformed.exists()
++
++
++def test_registry_reports_reader_and_writer_owners(tmp_path):
++    index = build_two_segment_index(tmp_path)
++    reader = index.open_reader()
++    writer = index.writer()
++    diagnostics = index.lifecycle_diagnostics()
++    assert len(diagnostics.reader_owners) == 1
++    assert diagnostics.writer_owner is not None
++    reader.close()
++    writer.close()
++    settled = index.lifecycle_diagnostics()
++    assert settled.reader_owners == ()
++    assert settled.writer_owner is None

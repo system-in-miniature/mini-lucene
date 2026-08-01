@@ -1,0 +1,5 @@
+tests/acceptance/test_end_to_end.py
+tests/acceptance/test_failure_matrix.py
+tests/acceptance/test_owner_zero.py
+tests/contract/test_cli.py
+tests/test_public_surface.py

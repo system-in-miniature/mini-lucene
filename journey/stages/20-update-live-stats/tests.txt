@@ -1,0 +1,2 @@
+tests/nrt/test_live_bm25_stats.py
+tests/nrt/test_update_document.py

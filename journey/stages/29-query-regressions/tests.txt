@@ -1,0 +1,4 @@
+tests/acceptance/test_phase1_retrieval_kernel.py
+tests/unit/analysis/test_pipeline.py
+tests/unit/query_parser/test_lexer.py
+tests/unit/query_parser/test_parser.py
