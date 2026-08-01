@@ -10,6 +10,7 @@ Build document-at-a-time execution and explain its boundary from an executable c
 
 ### Deliverable files
 
+- `pyproject.toml`
 - `src/minilucene/search/__init__.py`
 - `src/minilucene/search/collector.py`
 - `src/minilucene/search/iterators.py`
@@ -19,6 +20,7 @@ Build document-at-a-time execution and explain its boundary from an executable c
 - `tests/unit/search/test_daat_scorer.py`
 - `tests/unit/search/test_iterators.py`
 - `tests/unit/search/test_topk.py`
+- `uv.lock`
 
 ### The problem at this point
 
@@ -88,7 +90,9 @@ The planner builds iterator/scorer trees from rewritten queries, collectors cons
 
 Differential equality makes the old executor an oracle while the new iterator contract changes cost and control flow without silently changing semantics.
 
+<!-- journey-file: pyproject.toml -->
 <!-- journey-file: src/minilucene/search/__init__.py -->
+<!-- journey-file: uv.lock -->
 #### Package, fixture, and project support
 
 These files only keep exports, test corpora, dependencies, and the runtime environment reproducible; they are supporting wiring rather than Lucene mechanism logic.
@@ -117,6 +121,7 @@ Explain the failure window this Stage closes, how runtime state changes, and whi
 
 ### 交付文件
 
+- `pyproject.toml`
 - `src/minilucene/search/__init__.py`
 - `src/minilucene/search/collector.py`
 - `src/minilucene/search/iterators.py`
@@ -126,6 +131,7 @@ Explain the failure window this Stage closes, how runtime state changes, and whi
 - `tests/unit/search/test_daat_scorer.py`
 - `tests/unit/search/test_iterators.py`
 - `tests/unit/search/test_topk.py`
+- `uv.lock`
 
 ### 当前遇到的问题
 
@@ -195,7 +201,9 @@ Planner 从 Rewritten Query 构建 Iterator/Scorer Tree，Collector 在不取 St
 
 差分相等让旧 Executor 成为 Oracle，使新 Iterator Contract 改变成本与控制流而不悄悄改变语义。
 
+<!-- journey-file: pyproject.toml -->
 <!-- journey-file: src/minilucene/search/__init__.py -->
+<!-- journey-file: uv.lock -->
 #### 包、Fixture 与工程支撑
 
 这些文件只保持包导出、测试语料、依赖与运行环境可复现，不把支撑接线误讲成 Lucene 机制。
