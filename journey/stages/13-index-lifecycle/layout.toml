@@ -1,0 +1,18 @@
+failure_files = ["tests/contract/test_index_lifecycle.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Index lifecycle ownership mechanism"
+title_zh = "Index 生命周期所有权机制"
+summary_en = "Open validates or establishes schema identity, grants one writer lease, and every public operation checks lifecycle state before mutation."
+summary_zh = "Open 校验或建立 Schema Identity、授予唯一 Writer Lease，并让每个 Public Operation 在 Mutation 前检查 Lifecycle State。"
+files = ["src/minilucene/errors.py", "src/minilucene/index/directory.py", "src/minilucene/schema.py", "src/minilucene/writer.py"]
+
+[[blocks]]
+id = "supporting"
+title_en = "Package, fixture, and project support"
+title_zh = "包、Fixture 与工程支撑"
+summary_en = "Keep exports, test corpora, dependencies, and the runtime environment reproducible."
+summary_zh = "保持包导出、测试语料、依赖与运行环境可复现。"
+files = ["src/minilucene/__init__.py", "src/minilucene/index/__init__.py"]
+supporting = true

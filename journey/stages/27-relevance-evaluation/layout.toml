@@ -1,0 +1,18 @@
+failure_files = ["tests/evaluation/test_metrics.py", "tests/evaluation/test_reference_corpus.py", "tests/support/__init__.py", "tests/support/reference_corpus.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Deterministic relevance evaluation mechanism"
+title_zh = "确定性相关性评估机制"
+summary_en = "The harness builds the reference index, runs declared queries, computes metrics at fixed cutoffs, and compares stable aggregates."
+summary_zh = "Harness 构建 Reference Index、运行声明 Query、在固定 Cutoff 计算 Metric，并比较稳定 Aggregate。"
+files = ["src/minilucene/evaluation.py"]
+
+[[blocks]]
+id = "supporting"
+title_en = "Package, fixture, and project support"
+title_zh = "包、Fixture 与工程支撑"
+summary_en = "Keep exports, test corpora, dependencies, and the runtime environment reproducible."
+summary_zh = "保持包导出、测试语料、依赖与运行环境可复现。"
+files = ["tests/fixtures/corpus.json", "tests/fixtures/qrels.json", "tests/fixtures/queries.json"]
+supporting = true

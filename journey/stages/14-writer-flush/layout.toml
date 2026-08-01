@@ -1,0 +1,9 @@
+failure_files = ["tests/storage/test_writer_flush.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Writer flush mechanism"
+title_zh = "Writer Flush机制"
+summary_en = "The writer swaps or snapshots its buffer, builds an image, publishes the segment, then records it as uncommitted only after success."
+summary_zh = "Writer Swap 或 Snapshot 当前 Buffer、构建 Image、发布 Segment，并且只在成功后记录为 Uncommitted。"
+files = ["src/minilucene/index/directory.py", "src/minilucene/index/memory.py", "src/minilucene/writer.py"]

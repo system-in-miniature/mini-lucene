@@ -1,0 +1,18 @@
+failure_files = ["tests/acceptance/test_phase1_retrieval_kernel.py", "tests/unit/analysis/test_pipeline.py", "tests/unit/query_parser/test_lexer.py", "tests/unit/query_parser/test_parser.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Query and token regressions mechanism"
+title_zh = "Query 与 Token 回归机制"
+summary_en = "The parser recognizes one-term phrases without collapsing quote evidence; the lexer keeps hyphens inside terms; constructors and primitives validate values at creation."
+summary_zh = "Parser 识别单 Term Phrase 而不丢 Quote Evidence；Lexer 保留 Term 内 Hyphen；Constructor 与 Primitive 在创建时校验 Value。"
+files = ["src/minilucene/analysis/model.py", "src/minilucene/analysis/pipeline.py", "src/minilucene/analysis/standard.py", "src/minilucene/query_parser/lexer.py", "src/minilucene/query_parser/parser.py", "src/minilucene/reader.py", "src/minilucene/search/reader.py", "src/minilucene/storage/codec.py", "src/minilucene/storage/manifest.py", "src/minilucene/writer.py"]
+
+[[blocks]]
+id = "supporting"
+title_en = "Package, fixture, and project support"
+title_zh = "包、Fixture 与工程支撑"
+summary_en = "Keep exports, test corpora, dependencies, and the runtime environment reproducible."
+summary_zh = "保持包导出、测试语料、依赖与运行环境可复现。"
+files = ["src/minilucene/analysis/__init__.py"]
+supporting = true

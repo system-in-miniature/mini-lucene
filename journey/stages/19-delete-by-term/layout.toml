@@ -1,0 +1,9 @@
+failure_files = ["tests/nrt/test_delete_by_term.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Delete by exact term mechanism"
+title_zh = "按精确 Term 删除机制"
+summary_en = "The writer flushes pending additions when necessary, resolves matching local doc IDs, derives masks, and updates only successful segment generations."
+summary_zh = "Writer 必要时 Flush Pending Add、解析匹配 Local Doc ID、派生 Mask，并只更新成功的 Segment Generation。"
+files = ["src/minilucene/index/directory.py", "src/minilucene/index/memory.py", "src/minilucene/search/reader.py", "src/minilucene/storage/live_docs.py", "src/minilucene/writer.py"]

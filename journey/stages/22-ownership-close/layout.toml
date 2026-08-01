@@ -1,0 +1,9 @@
+failure_files = ["tests/acceptance/test_phase3_nrt_mutation.py", "tests/nrt/test_close_lifecycle.py", "tests/nrt/test_segment_ownership.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Segment ownership and close mechanism"
+title_zh = "Segment 所有权与 Close机制"
+summary_en = "Opening and closing readers acquire/release segment generations; writer swaps mark inputs obsolete; cleanup deletes only registry-approved generations."
+summary_zh = "Reader Open/Close 获取或释放 Segment Generation；Writer Swap 标记 Input Obsolete；Cleanup 只删除 Registry 批准的 Generation。"
+files = ["src/minilucene/errors.py", "src/minilucene/index/directory.py", "src/minilucene/reader.py", "src/minilucene/storage/registry.py", "src/minilucene/writer.py"]

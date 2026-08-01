@@ -1,0 +1,18 @@
+failure_files = ["tests/contract/test_query_matching.py", "tests/helpers/__init__.py", "tests/helpers/corpus.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Closed query matching mechanism"
+title_zh = "封闭 Query 匹配机制"
+summary_en = "Leaf queries read postings, phrase matching aligns positions, and boolean nodes combine child results under explicit occurrence rules."
+summary_zh = "Leaf Query 读取 Posting，Phrase Matching 对齐 Position，Boolean Node 按显式 Occur Rule 组合子结果。"
+files = ["src/minilucene/query/match.py", "src/minilucene/query/model.py"]
+
+[[blocks]]
+id = "supporting"
+title_en = "Package, fixture, and project support"
+title_zh = "包、Fixture 与工程支撑"
+summary_en = "Keep exports, test corpora, dependencies, and the runtime environment reproducible."
+summary_zh = "保持包导出、测试语料、依赖与运行环境可复现。"
+files = ["src/minilucene/query/__init__.py"]
+supporting = true

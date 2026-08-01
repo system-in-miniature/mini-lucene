@@ -1,0 +1,9 @@
+failure_files = ["tests/unit/storage/test_segment_codec.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Educational segment codec mechanism"
+title_zh = "教学用 Segment Codec机制"
+summary_en = "Encode orders tables and delta-encodes monotonic IDs; decode validates headers, counts, bounds, ordering, and full input consumption."
+summary_zh = "Encode 排序 Table 并 Delta Encode 单调 ID；Decode 校验 Header、Count、Bound、Order 与完整输入消费。"
+files = ["src/minilucene/storage/codec.py"]

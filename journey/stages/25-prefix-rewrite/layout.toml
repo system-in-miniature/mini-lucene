@@ -1,0 +1,9 @@
+failure_files = ["tests/contract/test_prefix_rewrite.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Bounded prefix rewrite mechanism"
+title_zh = "有界 Prefix Rewrite机制"
+summary_en = "It resolves field context, enumerates sorted matching terms, stops after limit plus one, and recursively rewrites composite children."
+summary_zh = "它解析 Field Context、枚举有序匹配 Term、在 Limit+1 停止，并递归 Rewrite Composite Child。"
+files = ["src/minilucene/errors.py", "src/minilucene/reader.py", "src/minilucene/search/reader.py", "src/minilucene/search/rewrite.py"]

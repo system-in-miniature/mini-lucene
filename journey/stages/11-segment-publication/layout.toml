@@ -1,0 +1,9 @@
+failure_files = ["tests/storage/test_segment_store.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Checksummed segment publication mechanism"
+title_zh = "带校验和的 Segment 发布机制"
+summary_en = "It writes a temporary sibling, fsyncs files and directory, records SHA-256 metadata, atomically renames, and verifies on read."
+summary_zh = "它写临时 Sibling、Fsync 文件与目录、记录 SHA-256 Metadata、原子 Rename，并在读取时验证。"
+files = ["src/minilucene/storage/filesystem.py", "src/minilucene/storage/segment_store.py"]

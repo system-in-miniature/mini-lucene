@@ -1,0 +1,9 @@
+failure_files = ["tests/storage/test_live_docs_commit.py", "tests/unit/storage/test_live_docs.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Immutable live-doc masks mechanism"
+title_zh = "不可变 Live-doc Mask机制"
+summary_en = "Mutation derives a new mask from the previous generation, writes and checksums it atomically, and publishes its generation in writer state."
+summary_zh = "Mutation 从前一代派生新 Mask、原子写入并校验，再在 Writer State 发布其 Generation。"
+files = ["src/minilucene/storage/filesystem.py", "src/minilucene/storage/live_docs.py"]

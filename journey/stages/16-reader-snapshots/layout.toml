@@ -1,0 +1,9 @@
+failure_files = ["tests/nrt/test_reader_snapshot.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Point-in-time reader snapshots mechanism"
+title_zh = "时间点 Reader Snapshot机制"
+summary_en = "Opening captures the current publication view; search reads only captured objects; closing releases ownership without consulting later writer state."
+summary_zh = "Open 捕获当前 Publication View；Search 只读取捕获对象；Close 释放 Ownership 且不查询后续 Writer State。"
+files = ["src/minilucene/errors.py", "src/minilucene/index/directory.py", "src/minilucene/reader.py", "src/minilucene/snapshot.py"]

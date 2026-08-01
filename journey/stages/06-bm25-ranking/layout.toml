@@ -1,0 +1,18 @@
+failure_files = ["tests/contract/test_ranking.py", "tests/helpers/corpus.py", "tests/unit/search/test_bm25.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Global BM25 ranking mechanism"
+title_zh = "全局 BM25 排名机制"
+summary_en = "The scorer visits matching terms, reads snapshot statistics and per-document norms, accumulates child scores, then applies deterministic tie-breaking."
+summary_zh = "Scorer 遍历匹配 Term，读取 Snapshot Statistic 与 Document Norm，累积子分数，再应用确定性 Tie Break。"
+files = ["src/minilucene/search/bm25.py", "src/minilucene/search/scorer.py"]
+
+[[blocks]]
+id = "supporting"
+title_en = "Package, fixture, and project support"
+title_zh = "包、Fixture 与工程支撑"
+summary_en = "Keep exports, test corpora, dependencies, and the runtime environment reproducible."
+summary_zh = "保持包导出、测试语料、依赖与运行环境可复现。"
+files = ["src/minilucene/search/__init__.py"]
+supporting = true

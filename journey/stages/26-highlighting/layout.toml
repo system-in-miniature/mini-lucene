@@ -1,0 +1,9 @@
+failure_files = ["tests/contract/test_highlighting.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Offset-based highlighting mechanism"
+title_zh = "基于 Offset 的 Highlight机制"
+summary_en = "The highlighter analyzes stored text with the field analyzer, selects token spans matched by rewritten query terms, merges overlaps, and builds bounded fragments."
+summary_zh = "Highlighter 用 Field Analyzer 分析 Stored Text、选择 Rewritten Query Term 匹配的 Token Span、合并重叠并构建有界 Fragment。"
+files = ["src/minilucene/highlight.py", "src/minilucene/reader.py", "src/minilucene/search/collector.py", "src/minilucene/search/searcher.py"]

@@ -1,0 +1,9 @@
+failure_files = ["tests/nrt/test_refresh_visibility.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Near-real-time refresh mechanism"
+title_zh = "Near-real-time Refresh机制"
+summary_en = "Refresh flushes if needed, captures current segment/live-doc generations, and returns a reader without replacing the durable manifest."
+summary_zh = "Refresh 必要时 Flush、捕获当前 Segment/Live-doc Generation，并返回 Reader，但不替换 Durable Manifest。"
+files = ["src/minilucene/storage/segment_store.py", "src/minilucene/writer.py"]

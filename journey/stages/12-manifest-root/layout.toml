@@ -1,0 +1,9 @@
+failure_files = ["tests/storage/test_manifest_store.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Manifest commit root mechanism"
+title_zh = "Manifest 提交根机制"
+summary_en = "Commit writes and fsyncs a candidate manifest, replaces the root file, fsyncs the directory, and validates referenced children on reopen."
+summary_zh = "Commit 写并 Fsync Candidate Manifest、替换 Root File、Fsync Directory，并在重开时验证引用的 Child。"
+files = ["src/minilucene/storage/manifest.py"]

@@ -1,0 +1,9 @@
+failure_files = ["tests/nrt/test_live_bm25_stats.py", "tests/nrt/test_update_document.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Update and live-only statistics mechanism"
+title_zh = "Update 与仅 Live 统计机制"
+summary_en = "The writer validates replacement first, derives deletion masks from the pre-update view, then buffers the new document; readers aggregate only live postings and norms."
+summary_zh = "Writer 先校验 Replacement、从更新前 View 派生 Delete Mask，再 Buffer 新 Document；Reader 只聚合 Live Posting 与 Norm。"
+files = ["src/minilucene/writer.py"]

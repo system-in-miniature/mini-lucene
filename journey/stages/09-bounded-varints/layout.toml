@@ -1,0 +1,9 @@
+failure_files = ["tests/unit/storage/test_varint.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Bounded varint primitives mechanism"
+title_zh = "有界 Varint 原语机制"
+summary_en = "Encoding rejects invalid Python values and emits a canonical byte sequence; decoding counts bytes and bits before returning a value."
+summary_zh = "Encoding 拒绝非法 Python Value 并输出 Canonical Byte Sequence；Decoding 在返回前统计 Byte 与 Bit。"
+files = ["src/minilucene/storage/varint.py"]

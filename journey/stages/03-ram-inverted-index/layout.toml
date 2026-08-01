@@ -1,0 +1,18 @@
+failure_files = ["tests/contract/test_memory_index.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Immutable RAM inverted index mechanism"
+title_zh = "不可变 RAM 倒排索引机制"
+summary_en = "The builder analyzes indexed fields, assigns local doc IDs, accumulates ordered postings and norms, then publishes immutable mappings."
+summary_zh = "Builder 分析可索引字段、分配 Local Doc ID、累积有序 Posting 与 Norm，最后发布不可变 Mapping。"
+files = ["src/minilucene/index/memory.py", "src/minilucene/index/postings.py"]
+
+[[blocks]]
+id = "supporting"
+title_en = "Package, fixture, and project support"
+title_zh = "包、Fixture 与工程支撑"
+summary_en = "Keep exports, test corpora, dependencies, and the runtime environment reproducible."
+summary_zh = "保持包导出、测试语料、依赖与运行环境可复现。"
+files = ["src/minilucene/index/__init__.py"]
+supporting = true

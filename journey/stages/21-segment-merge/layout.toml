@@ -1,0 +1,9 @@
+failure_files = ["tests/nrt/test_segment_merge.py"]
+
+[[blocks]]
+id = "mechanism"
+title_en = "Explicit segment merge mechanism"
+title_zh = "显式 Segment Merge机制"
+summary_en = "The writer pins input generations, builds a doc-ID remap and output image, publishes it, then replaces current segment references and retires inputs."
+summary_zh = "Writer Pin 输入 Generation、构建 Doc-ID Remap 与 Output Image、发布后替换当前 Segment Reference 并 Retire Input。"
+files = ["src/minilucene/merge.py", "src/minilucene/writer.py"]
